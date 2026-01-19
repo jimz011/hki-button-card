@@ -3,7 +3,7 @@
 const CARD_NAME_LIGHT = "hki-button-card";
 
 console.info(
-  '%c HKI-BUTTON-CARD %c v1.0.1 ',
+  '%c HKI-BUTTON-CARD %c v1.0.2 ',
   'color: white; background: #00C853; font-weight: bold;',
   'color: #00C853; background: white; font-weight: bold;'
 );
@@ -202,7 +202,30 @@ class HkiButtonCard extends LitElement {
       if (this._config.icon && (typeof this._config.icon !== 'string' || this._config.icon === '[object Object]')) {
         this._config.icon = '';
       }
-      
+
+      // Ensure these text override fields remain strings so Jinja templates don't end up as "[object Object]".
+      // Some editors (notably YAML-based ones) may coerce the value into an object.
+      const __coerceTemplateString = (v) => {
+        if (v === undefined || v === null) return "";
+        if (typeof v === "string") return v;
+        if (typeof v === "number" || typeof v === "boolean") return String(v);
+        if (typeof v === "object") {
+          // Common shapes we may see from editors
+          if (typeof v.value === "string") return v.value;
+          if (typeof v.template === "string") return v.template;
+          return "";
+        }
+        return "";
+      };
+
+      ["name", "state_label", "label", "info_display_override"].forEach((k) => {
+        const v = this._config[k];
+        if (v !== undefined && v !== null && typeof v !== "string") {
+          this._config[k] = __coerceTemplateString(v);
+        }
+        if (this._config[k] === "[object Object]") this._config[k] = "";
+      });
+
       // Initialize template state
       if (!this._tpl) {
         this._tpl = {
@@ -243,6 +266,13 @@ class HkiButtonCard extends LitElement {
     _setupTemplateKey(key, raw) {
       const isTpl = this._isTemplateString(raw);
 
+      // Make standalone "{{ user }}" behave like "{{ user.name }}".
+      // Jinja will otherwise stringify the full user object/dict.
+      // This keeps "{{ user.name }}" and other properties working as-is.
+      const template = (typeof raw === "string")
+        ? raw.replace(/{{\s*user\s*}}/g, "{{ user.name }}")
+        : raw;
+
       if (!isTpl) {
         this._unsubscribeTemplate(key);
         this._tpl[key].raw = raw;
@@ -253,8 +283,26 @@ class HkiButtonCard extends LitElement {
 
       this._setRendered(key, raw);
 
-      const vars = { config: this._config ?? {} };
-      const sig = this._cacheKey(raw, vars);
+      // Template variables for text overrides
+      // - config: the card config
+      // - user: current Home Assistant user (if available)
+      //   Ensure {{ user }} renders as the user's name (instead of "[object Object]")
+      //   while still allowing {{ user.name }} and other properties.
+      const __rawUser = this.hass?.user ?? {};
+      const user = (typeof __rawUser === 'object' && __rawUser)
+        ? { ...__rawUser }
+        : {};
+      try {
+        const __name = __rawUser?.name ?? '';
+        user.toString = () => __name;
+        user.valueOf = () => __name;
+        if (typeof Symbol !== 'undefined' && Symbol.toPrimitive) {
+          user[Symbol.toPrimitive] = () => __name;
+        }
+      } catch (e) {}
+
+      const vars = { config: this._config ?? {}, user };
+      const sig = this._cacheKey(template, vars);
       const state = this._tpl[key];
 
       this._unsubscribeTemplate(key);
@@ -266,9 +314,9 @@ class HkiButtonCard extends LitElement {
       const hadCache = this._applyCachedTemplate(key, sig);
 
       if (this.hass?.connection?.subscribeMessage) {
-        this._subscribeTemplateImmediate(key, seq, raw, vars, sig);
+        this._subscribeTemplateImmediate(key, seq, template, vars, sig);
       } else if (this.hass?.callWS && !hadCache) {
-        this._renderTemplateOnce(key, seq, raw, vars, sig);
+        this._renderTemplateOnce(key, seq, template, vars, sig);
       }
     }
 
@@ -6124,64 +6172,95 @@ class HkiButtonCard extends LitElement {
                 </ha-select>
                 
                 <div class="separator"></div>
-                <strong>Text Overrides</strong>
-                <p style="font-size: 11px; opacity: 0.7; margin-top: 0;">All fields support Jinja templates (e.g., <code>{{ states('sensor.temperature') }}°C</code>).</p>
-                
-                <ha-yaml-editor
-                  .hass=${this.hass}
-                  .label=${"Name Override"}
-                  .value=${this._config.name || ""}
-                  @value-changed=${(ev) => {
-                    ev.stopPropagation();
-                    const value = ev.detail?.value;
-                    if (value !== this._config.name) {
-                      this._fireChanged({ ...this._config, name: value || undefined });
-                    }
-                  }}
-                  @click=${(e) => e.stopPropagation()}
-                ></ha-yaml-editor>
-                
-                <ha-yaml-editor
-                  .hass=${this.hass}
-                  .label=${"State Override"}
-                  .value=${this._config.state_label || ""}
-                  @value-changed=${(ev) => {
-                    ev.stopPropagation();
-                    const value = ev.detail?.value;
-                    if (value !== this._config.state_label) {
-                      this._fireChanged({ ...this._config, state_label: value || undefined });
-                    }
-                  }}
-                  @click=${(e) => e.stopPropagation()}
-                ></ha-yaml-editor>
-                
-                <ha-yaml-editor
-                  .hass=${this.hass}
-                  .label=${"Label (Subtitle)"}
-                  .value=${this._config.label || ""}
-                  @value-changed=${(ev) => {
-                    ev.stopPropagation();
-                    const value = ev.detail?.value;
-                    if (value !== this._config.label) {
-                      this._fireChanged({ ...this._config, label: value || undefined });
-                    }
-                  }}
-                  @click=${(e) => e.stopPropagation()}
-                ></ha-yaml-editor>
-                
-                <ha-yaml-editor
-                  .hass=${this.hass}
-                  .label=${"Info Display Override"}
-                  .value=${this._config.info_display_override || ""}
-                  @value-changed=${(ev) => {
-                    ev.stopPropagation();
-                    const value = ev.detail?.value;
-                    if (value !== this._config.info_display_override) {
-                      this._fireChanged({ ...this._config, info_display_override: value || undefined });
-                    }
-                  }}
-                  @click=${(e) => e.stopPropagation()}
-                ></ha-yaml-editor>
+                <strong>Text Overrides (Jinja)</strong>
+                <p style="font-size: 11px; opacity: 0.7; margin-top: 0;">
+                  These fields support Jinja templates (e.g., <code>{{ states('sensor.temperature') }}°C</code>).
+                  Available variables: <code>config</code>, <code>user</code>.
+                </p>
+
+                <div class="tpl-field">
+                  <div class="tpl-title">Name (top line)</div>
+                  <div class="tpl-desc">Overrides the primary name text shown on the tile.</div>
+                  <ha-code-editor
+                    .hass=${this.hass}
+                    mode="yaml"
+                    autocomplete-entities
+                    .autocompleteEntities=${true}
+                    .label=${"Name template"}
+                    .value=${this._config.name || ""}
+                    @value-changed=${(ev) => {
+                      ev.stopPropagation();
+                      const value = ev.detail?.value;
+                      if (value !== this._config.name) {
+                        this._fireChanged({ ...this._config, name: value || undefined });
+                      }
+                    }}
+                    @click=${(e) => e.stopPropagation()}
+                  ></ha-code-editor>
+                </div>
+
+                <div class="tpl-field">
+                  <div class="tpl-title">State (bottom-right / state line)</div>
+                  <div class="tpl-desc">Overrides the state text (normally the entity state, like On/Off/23°C).</div>
+                  <ha-code-editor
+                    .hass=${this.hass}
+                    mode="yaml"
+                    autocomplete-entities
+                    .autocompleteEntities=${true}
+                    .label=${"State template"}
+                    .value=${this._config.state_label || ""}
+                    @value-changed=${(ev) => {
+                      ev.stopPropagation();
+                      const value = ev.detail?.value;
+                      if (value !== this._config.state_label) {
+                        this._fireChanged({ ...this._config, state_label: value || undefined });
+                      }
+                    }}
+                    @click=${(e) => e.stopPropagation()}
+                  ></ha-code-editor>
+                </div>
+
+                <div class="tpl-field">
+                  <div class="tpl-title">Label (subtitle)</div>
+                  <div class="tpl-desc">Overrides the smaller subtitle/label text (if enabled).</div>
+                  <ha-code-editor
+                    .hass=${this.hass}
+                    mode="yaml"
+                    autocomplete-entities
+                    .autocompleteEntities=${true}
+                    .label=${"Label template"}
+                    .value=${this._config.label || ""}
+                    @value-changed=${(ev) => {
+                      ev.stopPropagation();
+                      const value = ev.detail?.value;
+                      if (value !== this._config.label) {
+                        this._fireChanged({ ...this._config, label: value || undefined });
+                      }
+                    }}
+                    @click=${(e) => e.stopPropagation()}
+                  ></ha-code-editor>
+                </div>
+
+                <div class="tpl-field">
+                  <div class="tpl-title">Info (the optional “info” row)</div>
+                  <div class="tpl-desc">Overrides the info line when the card layout includes an info element.</div>
+                  <ha-code-editor
+                    .hass=${this.hass}
+                    mode="yaml"
+                    autocomplete-entities
+                    .autocompleteEntities=${true}
+                    .label=${"Info template"}
+                    .value=${this._config.info_display_override || ""}
+                    @value-changed=${(ev) => {
+                      ev.stopPropagation();
+                      const value = ev.detail?.value;
+                      if (value !== this._config.info_display_override) {
+                        this._fireChanged({ ...this._config, info_display_override: value || undefined });
+                      }
+                    }}
+                    @click=${(e) => e.stopPropagation()}
+                  ></ha-code-editor>
+                </div>
             </div>
           </div>
 
@@ -7103,6 +7182,23 @@ class HkiButtonCard extends LitElement {
                 grid-template-columns: 1fr 1fr; 
                 gap: 12px; 
                 margin-bottom: 8px; 
+            }
+
+            /* Text override template helpers */
+            .tpl-field {
+                margin-top: 10px;
+            }
+            .tpl-title {
+                font-weight: 600;
+                margin-bottom: 4px;
+            }
+            .tpl-desc {
+                font-size: 11px;
+                opacity: 0.7;
+                margin-bottom: 6px;
+            }
+            ha-code-editor {
+                width: 100%;
             }
             
             .sub-section { 
