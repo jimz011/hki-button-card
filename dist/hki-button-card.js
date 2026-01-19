@@ -3,7 +3,7 @@
 const CARD_NAME_LIGHT = "hki-button-card";
 
 console.info(
-  '%c HKI-BUTTON-CARD %c v1.0.0 ',
+  '%c HKI-BUTTON-CARD %c v1.0.1 ',
   'color: white; background: #00C853; font-weight: bold;',
   'color: #00C853; background: white; font-weight: bold;'
 );
@@ -744,6 +744,18 @@ class HkiButtonCard extends LitElement {
               this._saturation = 20;
           }
       }
+
+      // Clear optimistic climate UI state once Home Assistant confirms it
+      if (entity && entity.entity_id && entity.entity_id.startsWith('climate.')) {
+        if (this._optimisticHvacMode != null && entity.state === this._optimisticHvacMode) {
+          this._optimisticHvacMode = undefined;
+        }
+        const t = attrs.temperature;
+        if (this._optimisticClimateTemp != null && typeof t === 'number' && Math.abs(t - this._optimisticClimateTemp) < 0.001) {
+          this._optimisticClimateTemp = undefined;
+        }
+      }
+
     }
 
     /* --- ACTION HANDLING --- */
@@ -2332,6 +2344,16 @@ class HkiButtonCard extends LitElement {
           if (hvacMode !== 'off') {
             try { localStorage.setItem(`hki_climate_last_mode:${this._config.entity}`, hvacMode); } catch (e) {}
           }
+          // Optimistic UI: highlight immediately
+          this._optimisticHvacMode = hvacMode;
+          portal.querySelectorAll('.nav-btn').forEach(b => {
+            b.classList.remove('active');
+            b.style.background = '';
+            b.style.color = '';
+          });
+          btn.classList.add('active');
+          if (HVAC_COLORS && HVAC_COLORS[hvacMode]) btn.style.color = HVAC_COLORS[hvacMode];
+
           this.hass.callService('climate', 'set_hvac_mode', { entity_id: this._config.entity, hvac_mode: hvacMode });
         });
       });
@@ -2474,7 +2496,7 @@ class HkiButtonCard extends LitElement {
             <svg class="circular-slider-svg" viewBox="0 0 280 280" width="280" height="280">
               ${useGradient ? `
               <defs>
-                <linearGradient id="tempGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <linearGradient id="tempGradient" x1="100%" y1="0%" x2="0%" y2="0%">
                   <stop offset="0%" style="stop-color:#00D9FF;stop-opacity:1" />
                   <stop offset="25%" style="stop-color:#00E5A0;stop-opacity:1" />
                   <stop offset="50%" style="stop-color:#DFFF00;stop-opacity:1" />
@@ -2557,7 +2579,7 @@ class HkiButtonCard extends LitElement {
 
     _renderClimatePopupHvacModes(entity) {
       const modes = entity?.attributes?.hvac_modes || [];
-      const current = entity?.state;
+      const current = this._optimisticHvacMode ?? entity?.state;
       const labelize = (s) => String(s || '').replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
       return modes.map(m => {
         const isActive = m === current;
@@ -2898,7 +2920,7 @@ class HkiButtonCard extends LitElement {
           const ent = this._getEntity();
           const attrs = ent?.attributes || {};
           const step = this._getTempStep();
-          const current = attrs.temperature ?? attrs.current_temperature ?? this._tempMin;
+          const current = this._optimisticClimateTemp ?? attrs.temperature ?? attrs.current_temperature ?? this._tempMin;
           const newVal = this._clampTemp(current - step);
           
           this._updateCircularSliderUI(portal, newVal, unit);
@@ -2915,7 +2937,7 @@ class HkiButtonCard extends LitElement {
           const ent = this._getEntity();
           const attrs = ent?.attributes || {};
           const step = this._getTempStep();
-          const current = attrs.temperature ?? attrs.current_temperature ?? this._tempMin;
+          const current = this._optimisticClimateTemp ?? attrs.temperature ?? attrs.current_temperature ?? this._tempMin;
           const newVal = this._clampTemp(current + step);
           
           this._updateCircularSliderUI(portal, newVal, unit);
@@ -3032,10 +3054,23 @@ class HkiButtonCard extends LitElement {
     }
 
     _setupVerticalPlusMinusButtons(portal) {
-      const minusBtn = portal.querySelector('.vertical-temp-btn.minus');
-      const plusBtn = portal.querySelector('.vertical-temp-btn.plus');
-      
+      let minusBtn = portal.querySelector('.vertical-temp-btn.minus');
+      let plusBtn = portal.querySelector('.vertical-temp-btn.plus');
+
       if (!minusBtn && !plusBtn) return;
+
+      // Prevent duplicate listeners when the popup re-renders
+      if (minusBtn && minusBtn.parentNode) {
+        const clone = minusBtn.cloneNode(true);
+        minusBtn.parentNode.replaceChild(clone, minusBtn);
+        minusBtn = clone;
+      }
+      if (plusBtn && plusBtn.parentNode) {
+        const clone = plusBtn.cloneNode(true);
+        plusBtn.parentNode.replaceChild(clone, plusBtn);
+        plusBtn = clone;
+      }
+
       
       const useGradient = this._config.climate_show_gradient !== false;
       
@@ -3044,9 +3079,10 @@ class HkiButtonCard extends LitElement {
           const ent = this._getEntity();
           const attrs = ent?.attributes || {};
           const step = this._getTempStep();
-          const current = attrs.temperature ?? attrs.current_temperature ?? this._tempMin;
+          const current = this._optimisticClimateTemp ?? attrs.temperature ?? attrs.current_temperature ?? this._tempMin;
           const unit = attrs.temperature_unit || this.hass?.config?.unit_system?.temperature || '°';
           let newVal = this._clampTemp(current - step);
+          this._optimisticClimateTemp = newVal;
           
           // Optimistic UI update
           const percentage = this._getTempPercentage(newVal);
@@ -3076,9 +3112,10 @@ class HkiButtonCard extends LitElement {
           const ent = this._getEntity();
           const attrs = ent?.attributes || {};
           const step = this._getTempStep();
-          const current = attrs.temperature ?? attrs.current_temperature ?? this._tempMin;
+          const current = this._optimisticClimateTemp ?? attrs.temperature ?? attrs.current_temperature ?? this._tempMin;
           const unit = attrs.temperature_unit || this.hass?.config?.unit_system?.temperature || '°';
           let newVal = this._clampTemp(current + step);
+          this._optimisticClimateTemp = newVal;
           
           // Optimistic UI update
           const percentage = this._getTempPercentage(newVal);
@@ -3227,16 +3264,21 @@ class HkiButtonCard extends LitElement {
     
     _renderClimateNav(entity) {
         const modes = entity.attributes.hvac_modes || [];
+        const currentMode = this._optimisticHvacMode ?? entity.state;
         const title = (s) => String(s || '')
           .replace(/_/g, ' ')
           .replace(/\b\w/g, (c) => c.toUpperCase());
-        return modes.map(m => `
-            <button class="nav-btn ${m === entity.state ? 'active' : ''}" id="mode-${m}" style="${m === entity.state ? `color:${HVAC_COLORS[m]}` : ''}">
+        return modes.map(m => {
+            const isActive = m === currentMode;
+            return `
+            <button class="nav-btn ${isActive ? 'active' : ''}" id="mode-${m}" style="${isActive ? `color:${HVAC_COLORS[m]}` : ''}">
                 <ha-icon icon="${HVAC_ICONS[m]}"></ha-icon>
                 ${this._config.popup_hide_button_text ? '' : `<span class="nav-label">${title(m)}</span>`}
             </button>
-        `).join('');
+        `;
+        }).join('');
     }
+
 
     /* --- COVER POPUP --- */
     _coverFavoritesKey() {
@@ -4506,10 +4548,19 @@ class HkiButtonCard extends LitElement {
         (entity.attributes.hvac_modes || []).forEach(m => {
             const btn = portal.querySelector(`#mode-${m}`);
             if(btn) btn.addEventListener('click', () => {
+                 // Optimistic UI: highlight immediately
+                 this._optimisticHvacMode = m;
+                 portal.querySelectorAll('button[id^="mode-"]').forEach(b => {
+                   b.classList.remove('active');
+                   b.style.color = '';
+                 });
+                 btn.classList.add('active');
+                 if (HVAC_COLORS && HVAC_COLORS[m]) btn.style.color = HVAC_COLORS[m];
+
                  this.hass.callService('climate', 'set_hvac_mode', {
                      entity_id: this._config.entity, hvac_mode: m
                  });
-                 // Optional: Close popup or re-render
+                 // Re-render shortly to keep UI consistent with other elements
                  setTimeout(() => this._renderPopupPortal(), 200);
             });
         });
@@ -5860,7 +5911,7 @@ class HkiButtonCard extends LitElement {
       const renderHeader = (title, key) => html`
         <div class="accordion-header" @click=${(e) => this._toggleHeader(e, key)}>
            <span>${title}</span>
-           <ha-icon icon="${this._closedDetails[key] ? 'mdi:chevron-right' : 'mdi:chevron-down'}"></ha-icon>
+           <ha-icon icon="${this._closedDetails[key] ? 'mdi:plus' : 'mdi:minus'}"></ha-icon>
         </div>
       `;
 
@@ -6985,21 +7036,26 @@ class HkiButtonCard extends LitElement {
             
             /* ALLOW OVERFLOW FOR DROPDOWNS */
             .accordion-group { 
-                border: 1px solid var(--divider-color); 
-                border-radius: 8px; 
-                background: var(--secondary-background-color); 
+                border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12)); 
+                border-radius: 10px; 
+                background: transparent; 
                 overflow: visible; 
             }
             
             .accordion-header { 
-                padding: 12px 16px; 
+                padding: 14px 16px; 
                 background: var(--card-background-color); 
                 cursor: pointer; 
                 display: flex; 
                 justify-content: space-between; 
                 align-items: center; 
-                font-weight: 500;
-                border-radius: 8px; 
+                font-weight: 600;
+                border-radius: 10px; 
+            }
+
+            .accordion-header ha-icon {
+                --mdc-icon-size: 18px;
+                opacity: 0.9;
             }
             
             .accordion-content { 
@@ -7007,30 +7063,37 @@ class HkiButtonCard extends LitElement {
                 background: var(--primary-background-color); 
                 display: block;
                 overflow: visible; 
-                border-bottom-left-radius: 8px;
-                border-bottom-right-radius: 8px;
+                border-top: 1px solid var(--divider-color, rgba(255, 255, 255, 0.08));
+                border-bottom-left-radius: 10px;
+                border-bottom-right-radius: 10px;
             }
             
             .accordion-content.hidden { display: none; }
             
             .sub-accordion {
-                border: 1px solid var(--divider-color);
-                border-radius: 6px;
+                border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
+                border-radius: 10px;
                 margin-bottom: 8px;
-                background: var(--card-background-color);
+                background: transparent;
+                overflow: visible;
             }
             
             .sub-accordion .accordion-header {
-                padding: 10px 12px;
+                padding: 14px 16px;
                 font-size: 14px;
-                font-weight: 500;
-                background: var(--secondary-background-color);
+                font-weight: 600;
+                background: var(--card-background-color);
+                border-radius: 10px;
             }
             
             .sub-accordion-content {
-                padding: 12px;
+                padding: 16px;
                 background: var(--primary-background-color);
                 display: block;
+                overflow: visible;
+                border-top: 1px solid var(--divider-color, rgba(255, 255, 255, 0.08));
+                border-bottom-left-radius: 10px;
+                border-bottom-right-radius: 10px;
             }
             
             .sub-accordion-content.hidden { display: none; }
