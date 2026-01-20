@@ -3,7 +3,7 @@
 const CARD_NAME_LIGHT = "hki-button-card";
 
 console.info(
-  '%c HKI-BUTTON-CARD %c v1.0.2 ',
+  '%c HKI-BUTTON-CARD %c v1.0.3 ',
   'color: white; background: #00C853; font-weight: bold;',
   'color: #00C853; background: white; font-weight: bold;'
 );
@@ -8795,4 +8795,5 @@ class HkiButtonCard extends LitElement {
     description: "Customizable buttons with built-in popups.", 
     preview: true 
   });
+
 })();
