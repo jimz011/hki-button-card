@@ -450,6 +450,22 @@ class HkiButtonCard extends LitElement {
             this._renderCoverPopupPortal(newEntity);
             return;
           }
+          if (this._getDomain() === 'humidifier') {
+            this._renderHumidifierPopupPortal(newEntity);
+            return;
+          }
+          if (this._getDomain() === 'fan') {
+            this._renderFanPopupPortal(newEntity);
+            return;
+          }
+          if (this._getDomain() === 'switch') {
+            this._renderSwitchPopupPortal(newEntity);
+            return;
+          }
+          if (this._getDomain() === 'lock') {
+            this._renderLockPopupPortal(newEntity);
+            return;
+          }
 
             this._syncState();
             this._updateHeaderIcon();
@@ -1015,7 +1031,7 @@ class HkiButtonCard extends LitElement {
       const entity = this._getEntity();
       
       // Check if we have HKI popup support for this domain
-      const supportedDomains = ['light', 'climate', 'alarm_control_panel', 'cover'];
+      const supportedDomains = ['light', 'climate', 'alarm_control_panel', 'cover', 'humidifier', 'fan', 'switch', 'lock'];
       if (!supportedDomains.includes(domain)) {
         // Fall back to native more-info for unsupported domains
         const event = new Event('hass-more-info', { bubbles: true, composed: true });
@@ -1049,6 +1065,24 @@ class HkiButtonCard extends LitElement {
         this._coverGroupMode = false;
         this._ensureCoverFavorites();
         this._renderCoverPopupPortal(entity);
+        return;
+      }
+
+      if (domain === 'humidifier') {
+        this._activeView = 'main';
+        this._renderHumidifierPopupPortal(entity);
+        return;
+      }
+
+      if (domain === 'switch') {
+        this._activeView = 'main';
+        this._renderSwitchPopupPortal(entity);
+        return;
+      }
+
+      if (domain === 'lock') {
+        this._activeView = 'main';
+        this._renderLockPopupPortal(entity);
         return;
       }
 
@@ -1932,7 +1966,7 @@ class HkiButtonCard extends LitElement {
               <span id="hkiHeaderIconSlot"></span>
               <span class="hki-light-popup-title-text">
                 ${entityName}
-                <span class="hki-light-popup-state">${isOn ? brightness + '%' : 'Off'}</span>
+                <span class="hki-light-popup-state">${isOn ? brightness + '%' : 'Off'}${this._formatLastTriggered(entity) ? ` - ${this._formatLastTriggered(entity)}` : ''}</span>
               </span>
             </span>
             <div class="hki-light-popup-header-controls">
@@ -2287,7 +2321,7 @@ class HkiButtonCard extends LitElement {
               <ha-icon icon="${(entity.attributes && entity.attributes.icon) || this._config.icon || HVAC_ICONS[mode] || 'mdi:thermostat'}" style="color: ${color}"></ha-icon>
               <div class="hki-popup-title-text">
                 ${name}
-                <span class="hki-popup-state">${renderStateLine()}</span>
+                <span class="hki-popup-state">${renderStateLine()}${this._formatLastTriggered(entity) ? ` - ${this._formatLastTriggered(entity)}` : ''}</span>
               </div>
             </div>
             <div class="hki-popup-header-controls">
@@ -3658,7 +3692,7 @@ class HkiButtonCard extends LitElement {
               <ha-icon icon="${controlsIcon}" style="color: rgba(33,150,243,0.95)"></ha-icon>
               <div class="hki-light-popup-title-text">
                 ${safeTitle(entityName)}
-                <span class="hki-light-popup-state">${pos}%</span>
+                <span class="hki-light-popup-state">${pos}%${this._formatLastTriggered(entity) ? ` - ${this._formatLastTriggered(entity)}` : ''}</span>
               </div>
             </div>
             <div class="hki-light-popup-header-controls">
@@ -4154,7 +4188,7 @@ class HkiButtonCard extends LitElement {
               <ha-icon icon="${icon}" style="color:${iconColor}"></ha-icon>
               <div class="hki-light-popup-title-text">
                 ${safeTitle(entityName)}
-                <span class="hki-light-popup-state">${String(state).replace(/_/g,' ')}</span>
+                <span class="hki-light-popup-state">${String(state).replace(/_/g,' ')}${this._formatLastTriggered(entity) ? ` - ${this._formatLastTriggered(entity)}` : ''}</span>
               </div>
             </div>
             <div class="hki-light-popup-header-controls">
@@ -4306,6 +4340,1320 @@ class HkiButtonCard extends LitElement {
       if (btnNight) btnNight.addEventListener('click', () => doAction('alarm_arm_night'));
     }
 
+
+
+    /**
+     * Humidifier Popup
+     */
+    /**
+     * Humidifier Popup
+     */
+    _renderHumidifierPopupPortal(entity) {
+      if (this._popupPortal) this._popupPortal.remove();
+      if (!entity) return;
+
+      const name = this._config.name || entity.attributes.friendly_name || this._config.entity;
+      const attrs = entity.attributes || {};
+      const state = entity.state;
+      const isOn = state === 'on';
+      const currentHumidity = attrs.current_humidity || 0;
+      const targetHumidity = attrs.humidity || 50;
+      const minHumidity = attrs.min_humidity || 0;
+      const maxHumidity = attrs.max_humidity || 100;
+      const modes = attrs.available_modes || [];
+      const currentMode = attrs.mode || 'normal';
+      
+      const color = isOn ? 'var(--primary-color, #03a9f4)' : 'var(--disabled-text-color, #6f6f6f)';
+      const icon = isOn ? 'mdi:air-humidifier' : 'mdi:air-humidifier-off';
+      const borderRadius = this._config.popup_slider_radius ?? 12;
+
+      const valueSize = this._config.popup_value_font_size || 36;
+      const valueWeight = this._config.popup_value_font_weight || 300;
+
+      const portal = document.createElement('div');
+      portal.className = 'hki-popup-portal';
+
+      portal.innerHTML = `
+        <style>
+          .hki-popup-portal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7);
+            display: flex; align-items: center; justify-content: center; z-index: 9999;
+          }
+          .hki-popup-container {
+            background: var(--card-background-color, #1c1c1c);
+            border-radius: 16px;
+            width: 90%; max-width: 400px; height: 600px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            display: flex; flex-direction: column; overflow: hidden;
+          }
+          .hki-popup-header {
+            display: flex; justify-content: space-between; align-items: center; padding: 16px 20px;
+            background: rgba(255, 255, 255, 0.03); border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.05));
+            flex-shrink: 0;
+          }
+          .hki-popup-title { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+          .hki-popup-title ha-icon { --mdc-icon-size: 24px; }
+          .hki-popup-title-text { display: flex; flex-direction: column; gap: 2px; font-size: 16px; font-weight: 500; min-width: 0; }
+          .hki-popup-state { font-size: 12px; opacity: 0.6; text-transform: capitalize; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+          .hki-popup-header-controls { display: flex; gap: 8px; align-items: center; }
+          .header-btn {
+            width: 40px; height: 40px; border-radius: 50%;
+            background: var(--divider-color, rgba(255, 255, 255, 0.05)); border: none;
+            color: var(--primary-text-color); cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s;
+          }
+          .header-btn:hover { background: rgba(255, 255, 255, 0.1); transform: scale(1.05); }
+          .header-btn ha-icon { --mdc-icon-size: 20px; }
+
+          .hki-tabs {
+            display: flex; gap: 8px; padding: 8px 20px;
+            background: rgba(255, 255, 255, 0.02);
+            border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.05));
+            flex-shrink: 0;
+          }
+          .tab-btn {
+            flex: 1; height: 40px; border-radius: 8px;
+            background: transparent; border: 1px solid var(--divider-color, rgba(255,255,255,0.1));
+            color: var(--primary-text-color); cursor: pointer;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            transition: all 0.2s; font-size: 14px; font-weight: 500;
+          }
+          .tab-btn:hover { background: var(--secondary-background-color, rgba(255,255,255,0.08)); }
+          .tab-btn.active { 
+            background: var(--primary-color, rgba(255,255,255,0.12)); 
+            border-color: transparent; 
+            color: var(--text-primary-color, var(--primary-text-color));
+          }
+
+          .hki-popup-content { flex: 1; padding: 20px; overflow-y: auto; display: flex; align-items: center; justify-content: center; min-height: 0; }
+          
+          .slider-with-buttons {
+            display: flex; align-items: center; justify-content: center; width: 100%;
+            position: relative;
+          }
+          .humidifier-current-display {
+            display: flex; flex-direction: column; align-items: center; gap: 8px;
+            position: absolute; right: 0px;
+          }
+          .humidifier-current-label { font-size: 11px; opacity: 0.5; text-transform: uppercase; letter-spacing: 1px; }
+          .humidifier-current-value { font-size: 28px; font-weight: 300; }
+
+          .humidifier-slider-group { display: flex; flex-direction: column; align-items: center; gap: 12px; height: 320px; width: 80px; }
+          .value-display { font-size: ${valueSize}px; font-weight: ${valueWeight}; text-align: center; }
+          .value-display span { font-size: ${Math.max(14, Math.round(valueSize/2))}px; opacity: 0.7; }
+          .slider-label { font-size: 12px; opacity: 0.5; text-transform: uppercase; letter-spacing: 1px; }
+
+          .vertical-slider-track {
+            width: 100%; flex: 1; 
+            background: var(--secondary-background-color, rgba(255, 255, 255, 0.1));
+            border: 2px solid var(--divider-color, rgba(255, 255, 255, 0.1));
+            border-radius: ${borderRadius}px; position: relative; overflow: hidden; cursor: pointer;
+          }
+          .vertical-slider-fill {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            background: ${color}; transition: background 0.3s;
+            border-radius: 0 0 ${borderRadius}px ${borderRadius}px;
+          }
+          .vertical-slider-thumb {
+            position: absolute; left: 50%; transform: translateX(-50%);
+            width: 90px; height: 6px; background: white;
+            border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            pointer-events: none;
+          }
+
+          .hki-popup-nav {
+            display: flex; justify-content: space-evenly; padding: 12px;
+            background: rgba(255, 255, 255, 0.03);
+            border-top: 1px solid var(--divider-color, rgba(255, 255, 255, 0.05));
+            gap: 8px;
+            flex-shrink: 0;
+          }
+          .nav-btn {
+            flex: 1; height: 50px; border-radius: 12px;
+            border: none; background: transparent;
+            color: var(--primary-text-color); opacity: 0.5;
+            cursor: pointer;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+            transition: all 0.2s; font-size: 11px;
+          }
+          .nav-btn:hover { opacity: 0.8; background: rgba(255, 255, 255, 0.05); }
+          .nav-btn.active { 
+            opacity: 1; 
+            background: var(--primary-color, rgba(255,255,255,0.1)); 
+            color: var(--text-primary-color, var(--primary-text-color));
+          }
+          .nav-btn ha-icon { --mdc-icon-size: 24px; }
+
+          .mode-list { width: 100%; display: flex; flex-direction: column; gap: 8px; }
+          .mode-item { 
+            padding: 14px; 
+            background: rgba(255,255,255,0.05); 
+            border-radius: 8px; 
+            cursor: pointer; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center;
+            transition: all 0.2s;
+          }
+          .mode-item:hover { background: rgba(255,255,255,0.08); }
+          .mode-item.active { background: ${color}; color: white; }
+
+          .timeline-container { width: 100%; height: 100%; overflow-y: auto; padding: 12px; box-sizing: border-box; }
+          .timeline-item { display: flex; gap: 12px; position: relative; }
+          .timeline-visual { display: flex; flex-direction: column; align-items: center; width: 20px; flex-shrink: 0; }
+          .timeline-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--primary-color, #FFD700); z-index: 2; border: 2px solid var(--card-background-color, #1c1c1c); }
+          .timeline-line { width: 2px; flex-grow: 1; background: var(--divider-color, rgba(255,255,255,0.1)); margin-top: -2px; margin-bottom: -4px; }
+          .timeline-item:last-child .timeline-line { display: none; }
+          .timeline-content { flex: 1; padding-bottom: 16px; font-size: 13px; color: var(--primary-text-color); }
+          .timeline-detail { font-size: 11px; opacity: 0.6; display: block; margin-top: 4px; }
+          .timeline-ago { font-size: 10px; opacity: 0.5; display: block; margin-top: 2px; }
+          .timeline-trigger { font-size: 10px; opacity: 0.5; display: block; margin-top: 2px; font-style: italic; }
+          .history-loading { width: 100%; text-align: center; padding: 20px; opacity: 0.6; }
+        </style>
+
+        <div class="hki-popup-container">
+          <div class="hki-popup-header">
+            <div class="hki-popup-title">
+              <ha-icon icon="${icon}" style="color: ${color}"></ha-icon>
+              <div class="hki-popup-title-text">
+                ${name}
+                <span class="hki-popup-state">${isOn ? 'On' : 'Off'}${this._formatLastTriggered(entity) ? ` - ${this._formatLastTriggered(entity)}` : ''}</span>
+              </div>
+            </div>
+            <div class="hki-popup-header-controls">
+              <button class="header-btn" id="humidifierHistoryBtn"><ha-icon icon="mdi:chart-box-outline"></ha-icon></button>
+              <button class="header-btn" id="closeBtn"><ha-icon icon="mdi:close"></ha-icon></button>
+            </div>
+          </div>
+
+          <div class="hki-tabs">
+            <button class="tab-btn ${this._activeView === 'main' ? 'active' : ''}" id="tabMain" style="${this._activeView === 'main' ? this._getPopupButtonStyle(true) : this._getPopupButtonStyle(false)}"><ha-icon icon="mdi:water-percent"></ha-icon><span>Humidity</span></button>
+            ${modes.length > 0 ? `<button class="tab-btn ${this._activeView === 'modes' ? 'active' : ''}" id="tabModes" style="${this._activeView === 'modes' ? this._getPopupButtonStyle(true) : this._getPopupButtonStyle(false)}"><ha-icon icon="mdi:tune"></ha-icon><span>Mode</span></button>` : ''}
+          </div>
+
+          <div class="hki-popup-content" id="humidifierContent">
+            ${this._renderHumidifierPopupContent(entity, color, minHumidity, maxHumidity, targetHumidity, currentHumidity, valueSize, valueWeight, borderRadius)}
+          </div>
+
+          <div class="hki-popup-nav">
+            <button class="nav-btn ${isOn ? 'active' : ''}" id="humidifierToggle" style="${isOn ? this._getPopupButtonStyle(true) : this._getPopupButtonStyle(false)}">
+              <ha-icon icon="${isOn ? 'mdi:power' : 'mdi:power-off'}"></ha-icon>
+              <span>${isOn ? 'On' : 'Off'}</span>
+            </button>
+          </div>
+        </div>
+      `;
+
+      const container = portal.querySelector('.hki-popup-container');
+      if (container) container.addEventListener('click', (e) => e.stopPropagation());
+
+      let isBackgroundClick = false;
+      portal.addEventListener('mousedown', (e) => { isBackgroundClick = (e.target === portal); });
+      portal.addEventListener('touchstart', (e) => { isBackgroundClick = (e.target === portal); }, { passive: true });
+      portal.addEventListener('click', (e) => {
+        if (isBackgroundClick && e.target === portal) this._closePopup();
+        isBackgroundClick = false;
+      });
+
+      document.body.appendChild(portal);
+      this._popupPortal = portal;
+
+      const closeBtn = portal.querySelector('#closeBtn');
+      if (closeBtn) closeBtn.addEventListener('click', () => this._closePopup());
+
+      const historyBtn = portal.querySelector('#humidifierHistoryBtn');
+      if (historyBtn) {
+        historyBtn.addEventListener('click', () => {
+          this._activeView = this._activeView === 'history' ? 'main' : 'history';
+          const content = portal.querySelector('#humidifierContent');
+          if (content) {
+            content.innerHTML = this._renderHumidifierPopupContent(entity, color, minHumidity, maxHumidity, targetHumidity, currentHumidity, valueSize, valueWeight, borderRadius);
+            if (this._activeView === 'history') {
+              setTimeout(() => this._loadHistory(), 100);
+            } else {
+              this._setupHumidifierContentHandlers(portal, entity, minHumidity, maxHumidity);
+            }
+          }
+        });
+      }
+
+      const toggleBtn = portal.querySelector('#humidifierToggle');
+      if (toggleBtn) {
+        toggleBtn.addEventListener('click', () => {
+          this.hass.callService('humidifier', isOn ? 'turn_off' : 'turn_on', { entity_id: this._config.entity });
+        });
+      }
+
+      const tabMain = portal.querySelector('#tabMain');
+      if (tabMain) {
+        tabMain.addEventListener('click', () => {
+          if (this._activeView === 'main') return;
+          this._activeView = 'main';
+          const content = portal.querySelector('#humidifierContent');
+          if (content) {
+            content.innerHTML = this._renderHumidifierPopupContent(entity, color, minHumidity, maxHumidity, targetHumidity, currentHumidity, valueSize, valueWeight, borderRadius);
+            this._setupHumidifierContentHandlers(portal, entity, minHumidity, maxHumidity);
+          }
+          tabMain.classList.add('active');
+          tabMain.style = this._getPopupButtonStyle(true);
+          const tabModes = portal.querySelector('#tabModes');
+          if (tabModes) {
+            tabModes.classList.remove('active');
+            tabModes.style = this._getPopupButtonStyle(false);
+          }
+        });
+      }
+
+      const tabModes = portal.querySelector('#tabModes');
+      if (tabModes) {
+        tabModes.addEventListener('click', () => {
+          if (this._activeView === 'modes') return;
+          this._activeView = 'modes';
+          const content = portal.querySelector('#humidifierContent');
+          if (content) {
+            content.innerHTML = this._renderHumidifierModesList(modes, currentMode, color);
+            this._setupHumidifierContentHandlers(portal, entity, minHumidity, maxHumidity);
+          }
+          tabModes.classList.add('active');
+          tabModes.style = this._getPopupButtonStyle(true);
+          if (tabMain) {
+            tabMain.classList.remove('active');
+            tabMain.style = this._getPopupButtonStyle(false);
+          }
+        });
+      }
+
+      this._setupHumidifierContentHandlers(portal, entity, minHumidity, maxHumidity);
+    }
+
+    _renderHumidifierPopupContent(entity, color, minHumidity, maxHumidity, targetHumidity, currentHumidity, valueSize, valueWeight, borderRadius) {
+      if (this._activeView === 'history') {
+        return `<div class="timeline-container" data-view-type="history" id="historyContainer"><div class="history-loading">Loading Timeline...</div></div>`;
+      }
+
+      if (this._activeView === 'modes') {
+        const modes = entity.attributes.available_modes || [];
+        const currentMode = entity.attributes.mode || 'normal';
+        return this._renderHumidifierModesList(modes, currentMode, color);
+      }
+
+      if (entity.state === 'off') {
+        return `<div style="opacity: 0.5; font-size: 18px; font-weight: 500;">Humidifier is Off</div>`;
+      }
+
+      const range = maxHumidity - minHumidity;
+      const pct = ((targetHumidity - minHumidity) / range) * 100;
+
+      return `
+        <div class="slider-with-buttons">
+          <div class="humidifier-slider-group">
+            <div class="value-display" id="displayHumidity">${targetHumidity}<span>%</span></div>
+            <div class="vertical-slider-track" id="sliderHumidity">
+              <div class="vertical-slider-fill" style="height: ${pct}%; background: ${color};"></div>
+              <div class="vertical-slider-thumb" style="bottom: calc(${pct}% - 6px)"></div>
+            </div>
+            <div class="slider-label">Target</div>
+          </div>
+          <div class="humidifier-current-display">
+            <div class="humidifier-current-label">Current</div>
+            <div class="humidifier-current-value">${currentHumidity}<span style="font-size: 18px; opacity: 0.7;">%</span></div>
+          </div>
+        </div>
+      `;
+    }
+
+    _renderHumidifierModesList(modes, currentMode, color) {
+      return `
+        <div class="mode-list">
+          ${modes.map(mode => `
+            <div class="mode-item ${mode === currentMode ? 'active' : ''}" data-mode="${mode}">
+              <span style="text-transform: capitalize;">${mode.replace(/_/g, ' ')}</span>
+              ${mode === currentMode ? '<ha-icon icon="mdi:check"></ha-icon>' : ''}
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    _setupHumidifierContentHandlers(portal, entity, minHumidity, maxHumidity) {
+      if (this._activeView === 'modes') {
+        const modeItems = portal.querySelectorAll('.mode-item');
+        modeItems.forEach(item => {
+          item.addEventListener('click', () => {
+            const mode = item.getAttribute('data-mode');
+            this.hass.callService('humidifier', 'set_mode', {
+              entity_id: this._config.entity,
+              mode: mode
+            });
+          });
+        });
+        return;
+      }
+
+      if (this._activeView === 'history') {
+        return;
+      }
+
+      const slider = portal.querySelector('#sliderHumidity');
+      if (!slider) return;
+
+      const range = maxHumidity - minHumidity;
+      const updateHumidity = (clientY) => {
+        const rect = slider.getBoundingClientRect();
+        const pct = Math.max(0, Math.min(1, (rect.bottom - clientY) / rect.height));
+        const value = Math.round(minHumidity + pct * range);
+        
+        const display = portal.querySelector('#displayHumidity');
+        const fill = slider.querySelector('.vertical-slider-fill');
+        const thumb = slider.querySelector('.vertical-slider-thumb');
+        
+        if (display) display.innerHTML = `${value}<span>%</span>`;
+        if (fill) fill.style.height = `${pct * 100}%`;
+        if (thumb) thumb.style.bottom = `calc(${pct * 100}% - 6px)`;
+        
+        return value;
+      };
+
+      let isDragging = false;
+      const handleMove = (clientY) => {
+        if (!isDragging) return;
+        updateHumidity(clientY);
+      };
+
+      const handleEnd = (clientY) => {
+        if (!isDragging) return;
+        isDragging = false;
+        const value = updateHumidity(clientY);
+        this.hass.callService('humidifier', 'set_humidity', {
+          entity_id: this._config.entity,
+          humidity: value
+        });
+      };
+
+      slider.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        updateHumidity(e.clientY);
+      });
+      document.addEventListener('mousemove', (e) => handleMove(e.clientY));
+      document.addEventListener('mouseup', (e) => handleEnd(e.clientY));
+
+      slider.addEventListener('touchstart', (e) => {
+        isDragging = true;
+        updateHumidity(e.touches[0].clientY);
+      }, { passive: true });
+      document.addEventListener('touchmove', (e) => {
+        if (isDragging) handleMove(e.touches[0].clientY);
+      }, { passive: true });
+      document.addEventListener('touchend', (e) => {
+        if (isDragging && e.changedTouches.length > 0) {
+          handleEnd(e.changedTouches[0].clientY);
+        }
+      }, { passive: true });
+    }
+
+
+    /**
+     * Fan Popup
+     */
+    _renderFanPopupPortal(entity) {
+      if (this._popupPortal) this._popupPortal.remove();
+      if (!entity) return;
+
+      const name = this._config.name || entity.attributes.friendly_name || this._config.entity;
+      const attrs = entity.attributes || {};
+      const state = entity.state;
+      const isOn = state === 'on';
+      const speed = attrs.percentage || 0;
+      const presetModes = attrs.preset_modes || [];
+      const currentPreset = attrs.preset_mode || null;
+      const direction = attrs.direction || 'forward';
+      const oscillating = attrs.oscillating || false;
+      const supportsDirection = attrs.supported_features ? (attrs.supported_features & 2) !== 0 : false;
+      const supportsOscillate = attrs.supported_features ? (attrs.supported_features & 4) !== 0 : false;
+      
+      const color = isOn ? 'var(--primary-color, #03a9f4)' : 'var(--disabled-text-color, #6f6f6f)';
+      const icon = isOn ? 'mdi:fan' : 'mdi:fan-off';
+      const borderRadius = this._config.popup_slider_radius ?? 12;
+
+      const valueSize = this._config.popup_value_font_size || 36;
+      const valueWeight = this._config.popup_value_font_weight || 300;
+
+      const portal = document.createElement('div');
+      portal.className = 'hki-popup-portal';
+
+      portal.innerHTML = `
+        <style>
+          .hki-popup-portal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7);
+            display: flex; align-items: center; justify-content: center; z-index: 9999;
+          }
+          .hki-popup-container {
+            background: var(--card-background-color, #1c1c1c);
+            border-radius: 16px;
+            width: 90%; max-width: 400px; height: 600px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            display: flex; flex-direction: column; overflow: hidden;
+          }
+          .hki-popup-header {
+            display: flex; justify-content: space-between; align-items: center; padding: 16px 20px;
+            background: rgba(255, 255, 255, 0.03); border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.05));
+            flex-shrink: 0;
+          }
+          .hki-popup-title { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+          .hki-popup-title ha-icon { --mdc-icon-size: 24px; }
+          .hki-popup-title-text { display: flex; flex-direction: column; gap: 2px; font-size: 16px; font-weight: 500; min-width: 0; }
+          .hki-popup-state { font-size: 12px; opacity: 0.6; text-transform: capitalize; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+          .hki-popup-header-controls { display: flex; gap: 8px; align-items: center; }
+          .header-btn {
+            width: 40px; height: 40px; border-radius: 50%;
+            background: var(--divider-color, rgba(255, 255, 255, 0.05)); border: none;
+            color: var(--primary-text-color); cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s;
+          }
+          .header-btn:hover { background: rgba(255, 255, 255, 0.1); transform: scale(1.05); }
+          .header-btn ha-icon { --mdc-icon-size: 20px; }
+
+          .hki-tabs {
+            display: flex; gap: 8px; padding: 8px 20px;
+            background: rgba(255, 255, 255, 0.02);
+            border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.05));
+            flex-shrink: 0;
+          }
+          .tab-btn {
+            flex: 1; height: 40px; border-radius: 8px;
+            background: transparent; border: 1px solid var(--divider-color, rgba(255,255,255,0.1));
+            color: var(--primary-text-color); cursor: pointer;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            transition: all 0.2s; font-size: 14px; font-weight: 500;
+          }
+          .tab-btn:hover { background: var(--secondary-background-color, rgba(255,255,255,0.08)); }
+          .tab-btn.active { 
+            background: var(--primary-color, rgba(255,255,255,0.12)); 
+            border-color: transparent; 
+            color: var(--text-primary-color, var(--primary-text-color));
+          }
+
+          .hki-popup-content { flex: 1; padding: 20px; overflow-y: auto; display: flex; align-items: center; justify-content: center; min-height: 0; }
+          
+          .fan-slider-wrapper {
+            display: flex; align-items: center; justify-content: center; width: 100%;
+          }
+          .fan-slider-group { display: flex; flex-direction: column; align-items: center; gap: 12px; height: 320px; width: 80px; }
+          .value-display { font-size: ${valueSize}px; font-weight: ${valueWeight}; text-align: center; }
+          .value-display span { font-size: ${Math.max(14, Math.round(valueSize/2))}px; opacity: 0.7; }
+          .slider-label { font-size: 12px; opacity: 0.5; text-transform: uppercase; letter-spacing: 1px; }
+
+          .vertical-slider-track {
+            width: 100%; flex: 1; 
+            background: var(--secondary-background-color, rgba(255, 255, 255, 0.1));
+            border: 2px solid var(--divider-color, rgba(255, 255, 255, 0.1));
+            border-radius: ${borderRadius}px; position: relative; overflow: hidden; cursor: pointer;
+          }
+          .vertical-slider-fill {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            background: ${color}; transition: background 0.3s;
+            border-radius: 0 0 ${borderRadius}px ${borderRadius}px;
+          }
+          .vertical-slider-thumb {
+            position: absolute; left: 50%; transform: translateX(-50%);
+            width: 90px; height: 6px; background: white;
+            border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            pointer-events: none;
+          }
+
+          .hki-popup-nav {
+            display: flex; justify-content: space-evenly; padding: 12px;
+            background: rgba(255, 255, 255, 0.03);
+            border-top: 1px solid var(--divider-color, rgba(255, 255, 255, 0.05));
+            gap: 8px;
+            flex-shrink: 0;
+          }
+          .nav-btn {
+            flex: 1; height: 50px; border-radius: 12px;
+            border: none; background: transparent;
+            color: var(--primary-text-color); opacity: 0.5;
+            cursor: pointer;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+            transition: all 0.2s; font-size: 11px;
+          }
+          .nav-btn:hover { opacity: 0.8; background: rgba(255, 255, 255, 0.05); }
+          .nav-btn.active { 
+            opacity: 1; 
+            background: var(--primary-color, rgba(255,255,255,0.1)); 
+            color: var(--text-primary-color, var(--primary-text-color));
+          }
+          .nav-btn ha-icon { --mdc-icon-size: 24px; }
+
+          .preset-list { width: 100%; display: flex; flex-direction: column; gap: 8px; }
+          .preset-item { 
+            padding: 14px; 
+            background: rgba(255,255,255,0.05); 
+            border-radius: 8px; 
+            cursor: pointer; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center;
+            transition: all 0.2s;
+          }
+          .preset-item:hover { background: rgba(255,255,255,0.08); }
+          .preset-item.active { background: ${color}; color: white; }
+
+          .timeline-container { width: 100%; height: 100%; overflow-y: auto; padding: 12px; box-sizing: border-box; }
+          .timeline-item { display: flex; gap: 12px; position: relative; }
+          .timeline-visual { display: flex; flex-direction: column; align-items: center; width: 20px; flex-shrink: 0; }
+          .timeline-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--primary-color, #FFD700); z-index: 2; border: 2px solid var(--card-background-color, #1c1c1c); }
+          .timeline-line { width: 2px; flex-grow: 1; background: var(--divider-color, rgba(255,255,255,0.1)); margin-top: -2px; margin-bottom: -4px; }
+          .timeline-item:last-child .timeline-line { display: none; }
+          .timeline-content { flex: 1; padding-bottom: 16px; font-size: 13px; color: var(--primary-text-color); }
+          .timeline-detail { font-size: 11px; opacity: 0.6; display: block; margin-top: 4px; }
+          .timeline-ago { font-size: 10px; opacity: 0.5; display: block; margin-top: 2px; }
+          .timeline-trigger { font-size: 10px; opacity: 0.5; display: block; margin-top: 2px; font-style: italic; }
+          .history-loading { width: 100%; text-align: center; padding: 20px; opacity: 0.6; }
+        </style>
+
+        <div class="hki-popup-container">
+          <div class="hki-popup-header">
+            <div class="hki-popup-title">
+              <ha-icon icon="${icon}" style="color: ${color}"></ha-icon>
+              <div class="hki-popup-title-text">
+                ${name}
+                <span class="hki-popup-state">${isOn ? speed + '%' : 'Off'}${this._formatLastTriggered(entity) ? ` - ${this._formatLastTriggered(entity)}` : ''}</span>
+              </div>
+            </div>
+            <div class="hki-popup-header-controls">
+              <button class="header-btn" id="fanHistoryBtn"><ha-icon icon="mdi:chart-box-outline"></ha-icon></button>
+              <button class="header-btn" id="closeBtn"><ha-icon icon="mdi:close"></ha-icon></button>
+            </div>
+          </div>
+
+          <div class="hki-tabs">
+            <button class="tab-btn ${this._activeView === 'main' ? 'active' : ''}" id="tabMain" style="${this._activeView === 'main' ? this._getPopupButtonStyle(true) : this._getPopupButtonStyle(false)}"><ha-icon icon="mdi:fan"></ha-icon><span>Speed</span></button>
+            ${presetModes.length > 0 ? `<button class="tab-btn ${this._activeView === 'presets' ? 'active' : ''}" id="tabPresets" style="${this._activeView === 'presets' ? this._getPopupButtonStyle(true) : this._getPopupButtonStyle(false)}"><ha-icon icon="mdi:tune"></ha-icon><span>Presets</span></button>` : ''}
+          </div>
+
+          <div class="hki-popup-content" id="fanContent">
+            ${this._renderFanPopupContent(entity, color, speed, valueSize, valueWeight, borderRadius)}
+          </div>
+
+          <div class="hki-popup-nav">
+            <button class="nav-btn ${isOn ? 'active' : ''}" id="fanToggle" style="${isOn ? this._getPopupButtonStyle(true) : this._getPopupButtonStyle(false)}">
+              <ha-icon icon="${isOn ? 'mdi:power' : 'mdi:power-off'}"></ha-icon>
+              <span>${isOn ? 'On' : 'Off'}</span>
+            </button>
+            ${supportsDirection ? `
+              <button class="nav-btn ${direction === 'reverse' ? 'active' : ''}" id="fanDirection" style="${direction === 'reverse' ? this._getPopupButtonStyle(true) : this._getPopupButtonStyle(false)}">
+                <ha-icon icon="${direction === 'reverse' ? 'mdi:rotate-left' : 'mdi:rotate-right'}"></ha-icon>
+                <span>${direction === 'reverse' ? 'Reverse' : 'Forward'}</span>
+              </button>
+            ` : ''}
+            ${supportsOscillate ? `
+              <button class="nav-btn ${oscillating ? 'active' : ''}" id="fanOscillate" style="${oscillating ? this._getPopupButtonStyle(true) : this._getPopupButtonStyle(false)}">
+                <ha-icon icon="${oscillating ? 'mdi:arrow-oscillating' : 'mdi:arrow-oscillating-off'}"></ha-icon>
+                <span>Oscillate</span>
+              </button>
+            ` : ''}
+          </div>
+        </div>
+      `;
+
+      const container = portal.querySelector('.hki-popup-container');
+      if (container) container.addEventListener('click', (e) => e.stopPropagation());
+
+      let isBackgroundClick = false;
+      portal.addEventListener('mousedown', (e) => { isBackgroundClick = (e.target === portal); });
+      portal.addEventListener('touchstart', (e) => { isBackgroundClick = (e.target === portal); }, { passive: true });
+      portal.addEventListener('click', (e) => {
+        if (isBackgroundClick && e.target === portal) this._closePopup();
+        isBackgroundClick = false;
+      });
+
+      document.body.appendChild(portal);
+      this._popupPortal = portal;
+
+      const closeBtn = portal.querySelector('#closeBtn');
+      if (closeBtn) closeBtn.addEventListener('click', () => this._closePopup());
+
+      const historyBtn = portal.querySelector('#fanHistoryBtn');
+      if (historyBtn) {
+        historyBtn.addEventListener('click', () => {
+          this._activeView = this._activeView === 'history' ? 'main' : 'history';
+          const content = portal.querySelector('#fanContent');
+          if (content) {
+            content.innerHTML = this._renderFanPopupContent(entity, color, speed, valueSize, valueWeight, borderRadius);
+            if (this._activeView === 'history') {
+              setTimeout(() => this._loadHistory(), 100);
+            } else {
+              this._setupFanContentHandlers(portal, entity);
+            }
+          }
+        });
+      }
+
+      const toggleBtn = portal.querySelector('#fanToggle');
+      if (toggleBtn) {
+        toggleBtn.addEventListener('click', () => {
+          this.hass.callService('fan', isOn ? 'turn_off' : 'turn_on', { entity_id: this._config.entity });
+        });
+      }
+
+      const directionBtn = portal.querySelector('#fanDirection');
+      if (directionBtn) {
+        directionBtn.addEventListener('click', () => {
+          this.hass.callService('fan', 'set_direction', {
+            entity_id: this._config.entity,
+            direction: direction === 'forward' ? 'reverse' : 'forward'
+          });
+        });
+      }
+
+      const oscillateBtn = portal.querySelector('#fanOscillate');
+      if (oscillateBtn) {
+        oscillateBtn.addEventListener('click', () => {
+          this.hass.callService('fan', 'oscillate', {
+            entity_id: this._config.entity,
+            oscillating: !oscillating
+          });
+        });
+      }
+
+      const tabMain = portal.querySelector('#tabMain');
+      if (tabMain) {
+        tabMain.addEventListener('click', () => {
+          if (this._activeView === 'main') return;
+          this._activeView = 'main';
+          const content = portal.querySelector('#fanContent');
+          if (content) {
+            content.innerHTML = this._renderFanPopupContent(entity, color, speed, valueSize, valueWeight, borderRadius);
+            this._setupFanContentHandlers(portal, entity);
+          }
+          tabMain.classList.add('active');
+          tabMain.style = this._getPopupButtonStyle(true);
+          const tabPresets = portal.querySelector('#tabPresets');
+          if (tabPresets) {
+            tabPresets.classList.remove('active');
+            tabPresets.style = this._getPopupButtonStyle(false);
+          }
+        });
+      }
+
+      const tabPresets = portal.querySelector('#tabPresets');
+      if (tabPresets) {
+        tabPresets.addEventListener('click', () => {
+          if (this._activeView === 'presets') return;
+          this._activeView = 'presets';
+          const content = portal.querySelector('#fanContent');
+          if (content) {
+            content.innerHTML = this._renderFanPresetsList(presetModes, currentPreset, color);
+            this._setupFanContentHandlers(portal, entity);
+          }
+          tabPresets.classList.add('active');
+          tabPresets.style = this._getPopupButtonStyle(true);
+          if (tabMain) {
+            tabMain.classList.remove('active');
+            tabMain.style = this._getPopupButtonStyle(false);
+          }
+        });
+      }
+
+      this._setupFanContentHandlers(portal, entity);
+    }
+
+    _renderFanPopupContent(entity, color, speed, valueSize, valueWeight, borderRadius) {
+      if (this._activeView === 'history') {
+        return `<div class="timeline-container" data-view-type="history" id="historyContainer"><div class="history-loading">Loading Timeline...</div></div>`;
+      }
+
+      if (this._activeView === 'presets') {
+        const presetModes = entity.attributes.preset_modes || [];
+        const currentPreset = entity.attributes.preset_mode || null;
+        return this._renderFanPresetsList(presetModes, currentPreset, color);
+      }
+
+      if (entity.state === 'off') {
+        return `<div style="opacity: 0.5; font-size: 18px; font-weight: 500;">Fan is Off</div>`;
+      }
+
+      const pct = speed;
+
+      return `
+        <div class="fan-slider-wrapper">
+          <div class="fan-slider-group">
+            <div class="value-display" id="displaySpeed">${speed}<span>%</span></div>
+            <div class="vertical-slider-track" id="sliderSpeed">
+              <div class="vertical-slider-fill" style="height: ${pct}%; background: ${color};"></div>
+              <div class="vertical-slider-thumb" style="bottom: calc(${pct}% - 6px)"></div>
+            </div>
+            <div class="slider-label">Speed</div>
+          </div>
+        </div>
+      `;
+    }
+
+    _renderFanPresetsList(presetModes, currentPreset, color) {
+      return `
+        <div class="preset-list">
+          ${presetModes.map(preset => `
+            <div class="preset-item ${preset === currentPreset ? 'active' : ''}" data-preset="${preset}">
+              <span style="text-transform: capitalize;">${preset.replace(/_/g, ' ')}</span>
+              ${preset === currentPreset ? '<ha-icon icon="mdi:check"></ha-icon>' : ''}
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    _setupFanContentHandlers(portal, entity) {
+      if (this._activeView === 'presets') {
+        const presetItems = portal.querySelectorAll('.preset-item');
+        presetItems.forEach(item => {
+          item.addEventListener('click', () => {
+            const preset = item.getAttribute('data-preset');
+            this.hass.callService('fan', 'set_preset_mode', {
+              entity_id: this._config.entity,
+              preset_mode: preset
+            });
+          });
+        });
+        return;
+      }
+
+      if (this._activeView === 'history') {
+        return;
+      }
+
+      const slider = portal.querySelector('#sliderSpeed');
+      if (!slider) return;
+
+      const updateSpeed = (clientY) => {
+        const rect = slider.getBoundingClientRect();
+        const pct = Math.max(0, Math.min(100, Math.round(((rect.bottom - clientY) / rect.height) * 100)));
+        
+        const display = portal.querySelector('#displaySpeed');
+        const fill = slider.querySelector('.vertical-slider-fill');
+        const thumb = slider.querySelector('.vertical-slider-thumb');
+        
+        if (display) display.innerHTML = `${pct}<span>%</span>`;
+        if (fill) fill.style.height = `${pct}%`;
+        if (thumb) thumb.style.bottom = `calc(${pct}% - 6px)`;
+        
+        return pct;
+      };
+
+      let isDragging = false;
+      const handleMove = (clientY) => {
+        if (!isDragging) return;
+        updateSpeed(clientY);
+      };
+
+      const handleEnd = (clientY) => {
+        if (!isDragging) return;
+        isDragging = false;
+        const value = updateSpeed(clientY);
+        this.hass.callService('fan', 'set_percentage', {
+          entity_id: this._config.entity,
+          percentage: value
+        });
+      };
+
+      slider.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        updateSpeed(e.clientY);
+      });
+      document.addEventListener('mousemove', (e) => handleMove(e.clientY));
+      document.addEventListener('mouseup', (e) => handleEnd(e.clientY));
+
+      slider.addEventListener('touchstart', (e) => {
+        isDragging = true;
+        updateSpeed(e.touches[0].clientY);
+      }, { passive: true });
+      document.addEventListener('touchmove', (e) => {
+        if (isDragging) handleMove(e.touches[0].clientY);
+      }, { passive: true });
+      document.addEventListener('touchend', (e) => {
+        if (isDragging && e.changedTouches.length > 0) {
+          handleEnd(e.changedTouches[0].clientY);
+        }
+      }, { passive: true });
+    }
+
+
+    /**
+     * Switch Popup
+     */
+    /**
+     * Switch Popup - HomeKit Style Vertical Toggle
+     */
+    /**
+     * Switch Popup - HomeKit Style Vertical Toggle
+     */
+    _renderSwitchPopupPortal(entity) {
+      if (this._popupPortal) this._popupPortal.remove();
+      if (!entity) return;
+
+      const name = this._config.name || entity.attributes.friendly_name || this._config.entity;
+      const state = entity.state;
+      const isOn = state === 'on';
+      
+      const color = isOn ? 'var(--primary-color, #03a9f4)' : 'var(--disabled-text-color, #6f6f6f)';
+      const icon = isOn ? 'mdi:toggle-switch' : 'mdi:toggle-switch-off';
+      const borderRadius = this._config.popup_slider_radius ?? 12;
+      const valueSize = this._config.popup_value_font_size || 32;
+      const valueWeight = this._config.popup_value_font_weight || 300;
+
+      const portal = document.createElement('div');
+      portal.className = 'hki-popup-portal';
+
+      portal.innerHTML = `
+        <style>
+          .hki-popup-portal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7);
+            display: flex; align-items: center; justify-content: center; z-index: 9999;
+          }
+          .hki-popup-container {
+            background: var(--card-background-color, #1c1c1c);
+            border-radius: 16px;
+            width: 90%; max-width: 400px; height: 600px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            display: flex; flex-direction: column; overflow: hidden;
+          }
+          .hki-popup-header {
+            display: flex; justify-content: space-between; align-items: center; padding: 16px 20px;
+            background: rgba(255, 255, 255, 0.03); border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.05));
+            flex-shrink: 0;
+          }
+          .hki-popup-title { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+          .hki-popup-title ha-icon { --mdc-icon-size: 24px; }
+          .hki-popup-title-text { display: flex; flex-direction: column; gap: 2px; font-size: 16px; font-weight: 500; min-width: 0; }
+          .hki-popup-state { font-size: 12px; opacity: 0.6; text-transform: capitalize; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+          .hki-popup-header-controls { display: flex; gap: 8px; align-items: center; }
+          .header-btn {
+            width: 40px; height: 40px; border-radius: 50%;
+            background: var(--divider-color, rgba(255, 255, 255, 0.05)); border: none;
+            color: var(--primary-text-color); cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s;
+          }
+          .header-btn:hover { background: rgba(255, 255, 255, 0.1); transform: scale(1.05); }
+          .header-btn ha-icon { --mdc-icon-size: 20px; }
+
+          .hki-popup-content { 
+            flex: 1; padding: 20px; overflow-y: auto; 
+            display: flex; align-items: center; justify-content: center; 
+            min-height: 0; 
+          }
+
+          .switch-container {
+            display: flex; flex-direction: column; align-items: center; gap: 24px;
+          }
+          
+          .homekit-switch {
+            width: 100px;
+            height: 200px;
+            background: ${isOn ? color : 'var(--secondary-background-color, rgba(255,255,255,0.1))'};
+            border-radius: ${borderRadius * 4}px;
+            position: relative;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            border: 2px solid var(--divider-color, rgba(255,255,255,0.1));
+          }
+          
+          .homekit-switch-thumb {
+            position: absolute;
+            width: 88px;
+            height: 88px;
+            background: white;
+            border-radius: 50%;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: top 0.3s ease;
+            left: 4px;
+            top: ${isOn ? '4px' : 'calc(100% - 92px)'};
+          }
+          
+          .switch-state-text {
+            font-size: ${valueSize}px;
+            font-weight: ${valueWeight};
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            opacity: 0.8;
+          }
+
+          .timeline-container { width: 100%; height: 100%; overflow-y: auto; padding: 12px; box-sizing: border-box; }
+          .timeline-item { display: flex; gap: 12px; position: relative; }
+          .timeline-visual { display: flex; flex-direction: column; align-items: center; width: 20px; flex-shrink: 0; }
+          .timeline-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--primary-color, #FFD700); z-index: 2; border: 2px solid var(--card-background-color, #1c1c1c); }
+          .timeline-line { width: 2px; flex-grow: 1; background: var(--divider-color, rgba(255,255,255,0.1)); margin-top: -2px; margin-bottom: -4px; }
+          .timeline-item:last-child .timeline-line { display: none; }
+          .timeline-content { flex: 1; padding-bottom: 16px; font-size: 13px; color: var(--primary-text-color); }
+          .timeline-detail { font-size: 11px; opacity: 0.6; display: block; margin-top: 4px; }
+          .timeline-ago { font-size: 10px; opacity: 0.5; display: block; margin-top: 2px; }
+          .timeline-trigger { font-size: 10px; opacity: 0.5; display: block; margin-top: 2px; font-style: italic; }
+          .history-loading { width: 100%; text-align: center; padding: 20px; opacity: 0.6; }
+        </style>
+
+        <div class="hki-popup-container">
+          <div class="hki-popup-header">
+            <div class="hki-popup-title">
+              <ha-icon icon="${icon}" style="color: ${color}"></ha-icon>
+              <div class="hki-popup-title-text">
+                ${name}
+                <span class="hki-popup-state">${isOn ? 'On' : 'Off'}${this._formatLastTriggered(entity) ? ` - ${this._formatLastTriggered(entity)}` : ''}</span>
+              </div>
+            </div>
+            <div class="hki-popup-header-controls">
+              <button class="header-btn" id="switchHistoryBtn"><ha-icon icon="mdi:chart-box-outline"></ha-icon></button>
+              <button class="header-btn" id="closeBtn"><ha-icon icon="mdi:close"></ha-icon></button>
+            </div>
+          </div>
+
+          <div class="hki-popup-content" id="switchContent">
+            ${this._renderSwitchPopupContent(entity, color, icon, isOn, borderRadius, valueSize, valueWeight)}
+          </div>
+        </div>
+      `;
+
+      const container = portal.querySelector('.hki-popup-container');
+      if (container) container.addEventListener('click', (e) => e.stopPropagation());
+
+      let isBackgroundClick = false;
+      portal.addEventListener('mousedown', (e) => { isBackgroundClick = (e.target === portal); });
+      portal.addEventListener('touchstart', (e) => { isBackgroundClick = (e.target === portal); }, { passive: true });
+      portal.addEventListener('click', (e) => {
+        if (isBackgroundClick && e.target === portal) this._closePopup();
+        isBackgroundClick = false;
+      });
+
+      document.body.appendChild(portal);
+      this._popupPortal = portal;
+
+      const closeBtn = portal.querySelector('#closeBtn');
+      if (closeBtn) closeBtn.addEventListener('click', () => this._closePopup());
+
+      const historyBtn = portal.querySelector('#switchHistoryBtn');
+      if (historyBtn) {
+        historyBtn.addEventListener('click', () => {
+          this._activeView = this._activeView === 'history' ? 'main' : 'history';
+          const content = portal.querySelector('#switchContent');
+          if (content) {
+            content.innerHTML = this._renderSwitchPopupContent(entity, color, icon, isOn, borderRadius, valueSize, valueWeight);
+            if (this._activeView === 'history') {
+              setTimeout(() => this._loadHistory(), 100);
+            } else {
+              this._setupSwitchHandlers(portal, entity);
+            }
+          }
+        });
+      }
+
+      this._setupSwitchHandlers(portal, entity);
+    }
+
+    _renderSwitchPopupContent(entity, color, icon, isOn, borderRadius, valueSize, valueWeight) {
+      if (this._activeView === 'history') {
+        return `<div class="timeline-container" data-view-type="history" id="historyContainer"><div class="history-loading">Loading Timeline...</div></div>`;
+      }
+
+      return `
+        <div class="switch-container">
+          <div class="homekit-switch" id="homekitSwitch">
+            <div class="homekit-switch-thumb"></div>
+          </div>
+          <div class="switch-state-text">${isOn ? 'On' : 'Off'}</div>
+        </div>
+      `;
+    }
+
+    _setupSwitchHandlers(portal, entity) {
+      if (this._activeView === 'history') return;
+
+      const switchEl = portal.querySelector('#homekitSwitch');
+      if (!switchEl) return;
+
+      switchEl.addEventListener('click', () => {
+        const isOn = entity.state === 'on';
+        this.hass.callService('switch', isOn ? 'turn_off' : 'turn_on', { entity_id: this._config.entity });
+      });
+    }
+
+    /**
+     * Lock Popup - HA Style Vertical Slider
+     */
+    _renderLockPopupPortal(entity) {
+      if (this._popupPortal) this._popupPortal.remove();
+      if (!entity) return;
+
+      const name = this._config.name || entity.attributes.friendly_name || this._config.entity;
+      const state = entity.state;
+      const isLocked = state === 'locked';
+      const isUnlocked = state === 'unlocked';
+      const isJammed = state === 'jammed';
+      const isLocking = state === 'locking';
+      const isUnlocking = state === 'unlocking';
+      
+      const color = isLocked ? '#4CAF50' : (isJammed ? '#F44336' : '#FFC107');
+      const icon = isLocked ? 'mdi:lock' : (isJammed ? 'mdi:lock-alert' : 'mdi:lock-open');
+      const stateText = isLocked ? 'Locked' : (isJammed ? 'Jammed' : (isLocking ? 'Locking' : (isUnlocking ? 'Unlocking' : 'Unlocked')));
+      const borderRadius = this._config.popup_slider_radius ?? 12;
+      const valueSize = this._config.popup_value_font_size || 32;
+      const valueWeight = this._config.popup_value_font_weight || 300;
+
+      // Check if lock supports open
+      const supportsOpen = entity.attributes.supported_features ? (entity.attributes.supported_features & 2) !== 0 : false;
+
+      const portal = document.createElement('div');
+      portal.className = 'hki-popup-portal';
+
+      // Calculate slider position (locked = top/100%, unlocked = bottom/0%)
+      const sliderPosition = isLocked ? 100 : (isLocking || isUnlocking ? 50 : 0);
+
+      portal.innerHTML = `
+        <style>
+          .hki-popup-portal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7);
+            display: flex; align-items: center; justify-content: center; z-index: 9999;
+          }
+          .hki-popup-container {
+            background: var(--card-background-color, #1c1c1c);
+            border-radius: 16px;
+            width: 90%; max-width: 400px; height: 600px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            display: flex; flex-direction: column; overflow: hidden;
+          }
+          .hki-popup-header {
+            display: flex; justify-content: space-between; align-items: center; padding: 16px 20px;
+            background: rgba(255, 255, 255, 0.03); border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.05));
+            flex-shrink: 0;
+          }
+          .hki-popup-title { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+          .hki-popup-title ha-icon { --mdc-icon-size: 24px; }
+          .hki-popup-title-text { display: flex; flex-direction: column; gap: 2px; font-size: 16px; font-weight: 500; min-width: 0; }
+          .hki-popup-state { font-size: 12px; opacity: 0.6; text-transform: capitalize; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+          .hki-popup-header-controls { display: flex; gap: 8px; align-items: center; }
+          .header-btn {
+            width: 40px; height: 40px; border-radius: 50%;
+            background: var(--divider-color, rgba(255, 255, 255, 0.05)); border: none;
+            color: var(--primary-text-color); cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s;
+          }
+          .header-btn:hover { background: rgba(255, 255, 255, 0.1); transform: scale(1.05); }
+          .header-btn ha-icon { --mdc-icon-size: 20px; }
+
+          .hki-popup-content { 
+            flex: 1; padding: 20px; overflow-y: auto; 
+            display: flex; align-items: center; justify-content: center; 
+            min-height: 0; 
+          }
+
+          .lock-slider-container {
+            display: flex; flex-direction: column; align-items: center; gap: 20px;
+          }
+          
+          .lock-state-display {
+            font-size: ${valueSize}px;
+            font-weight: ${valueWeight};
+            text-transform: capitalize;
+            letter-spacing: 1px;
+            opacity: 0.9;
+          }
+          
+          .lock-vertical-slider {
+            width: 100px;
+            height: 320px;
+            background: var(--secondary-background-color, rgba(255,255,255,0.1));
+            border: 2px solid var(--divider-color, rgba(255,255,255,0.1));
+            border-radius: ${borderRadius}px;
+            position: relative;
+            overflow: visible;
+            cursor: pointer;
+          }
+          
+          .lock-slider-fill {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: ${color};
+            transition: height 0.3s ease, background 0.3s ease;
+            height: ${sliderPosition}%;
+            border-radius: 0 0 ${Math.max(0, borderRadius - 2)}px ${Math.max(0, borderRadius - 2)}px;
+          }
+          
+          .lock-slider-thumb {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80px;
+            height: 80px;
+            background: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+            pointer-events: none;
+            transition: bottom 0.3s ease;
+            bottom: calc(${sliderPosition}% - 40px);
+          }
+          
+          .lock-slider-thumb ha-icon {
+            --mdc-icon-size: 40px;
+            color: ${color};
+          }
+
+          .hki-popup-nav {
+            display: flex; justify-content: space-evenly; padding: 12px;
+            background: rgba(255, 255, 255, 0.03);
+            border-top: 1px solid var(--divider-color, rgba(255, 255, 255, 0.05));
+            gap: 8px;
+            flex-shrink: 0;
+          }
+          .nav-btn {
+            flex: 1; height: 50px; border-radius: 12px;
+            border: none; background: transparent;
+            color: var(--primary-text-color); opacity: 0.5;
+            cursor: pointer;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+            transition: all 0.2s; font-size: 11px;
+          }
+          .nav-btn:hover { opacity: 0.8; background: rgba(255, 255, 255, 0.05); }
+          .nav-btn.active { 
+            opacity: 1; 
+            background: var(--primary-color, rgba(255,255,255,0.1)); 
+            color: var(--text-primary-color, var(--primary-text-color));
+          }
+          .nav-btn ha-icon { --mdc-icon-size: 24px; }
+
+          .timeline-container { width: 100%; height: 100%; overflow-y: auto; padding: 12px; box-sizing: border-box; }
+          .timeline-item { display: flex; gap: 12px; position: relative; }
+          .timeline-visual { display: flex; flex-direction: column; align-items: center; width: 20px; flex-shrink: 0; }
+          .timeline-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--primary-color, #FFD700); z-index: 2; border: 2px solid var(--card-background-color, #1c1c1c); }
+          .timeline-line { width: 2px; flex-grow: 1; background: var(--divider-color, rgba(255,255,255,0.1)); margin-top: -2px; margin-bottom: -4px; }
+          .timeline-item:last-child .timeline-line { display: none; }
+          .timeline-content { flex: 1; padding-bottom: 16px; font-size: 13px; color: var(--primary-text-color); }
+          .timeline-detail { font-size: 11px; opacity: 0.6; display: block; margin-top: 4px; }
+          .timeline-ago { font-size: 10px; opacity: 0.5; display: block; margin-top: 2px; }
+          .timeline-trigger { font-size: 10px; opacity: 0.5; display: block; margin-top: 2px; font-style: italic; }
+          .history-loading { width: 100%; text-align: center; padding: 20px; opacity: 0.6; }
+        </style>
+
+        <div class="hki-popup-container">
+          <div class="hki-popup-header">
+            <div class="hki-popup-title">
+              <ha-icon icon="${icon}" style="color: ${color}"></ha-icon>
+              <div class="hki-popup-title-text">
+                ${name}
+                <span class="hki-popup-state">${stateText}${this._formatLastTriggered(entity) ? ` - ${this._formatLastTriggered(entity)}` : ''}</span>
+              </div>
+            </div>
+            <div class="hki-popup-header-controls">
+              <button class="header-btn" id="lockHistoryBtn"><ha-icon icon="mdi:chart-box-outline"></ha-icon></button>
+              <button class="header-btn" id="closeBtn"><ha-icon icon="mdi:close"></ha-icon></button>
+            </div>
+          </div>
+
+          <div class="hki-popup-content" id="lockContent">
+            ${this._renderLockPopupContent(entity, color, icon, stateText, sliderPosition, borderRadius, valueSize, valueWeight)}
+          </div>
+
+          <div class="hki-popup-nav">
+            ${supportsOpen ? `
+              <button class="nav-btn" id="openDoorBtn" style="${this._getPopupButtonStyle(false)}">
+                <ha-icon icon="mdi:door-open"></ha-icon>
+                <span>Open Door</span>
+              </button>
+            ` : ''}
+          </div>
+        </div>
+      `;
+
+      const container = portal.querySelector('.hki-popup-container');
+      if (container) container.addEventListener('click', (e) => e.stopPropagation());
+
+      let isBackgroundClick = false;
+      portal.addEventListener('mousedown', (e) => { isBackgroundClick = (e.target === portal); });
+      portal.addEventListener('touchstart', (e) => { isBackgroundClick = (e.target === portal); }, { passive: true });
+      portal.addEventListener('click', (e) => {
+        if (isBackgroundClick && e.target === portal) this._closePopup();
+        isBackgroundClick = false;
+      });
+
+      document.body.appendChild(portal);
+      this._popupPortal = portal;
+
+      const closeBtn = portal.querySelector('#closeBtn');
+      if (closeBtn) closeBtn.addEventListener('click', () => this._closePopup());
+
+      const historyBtn = portal.querySelector('#lockHistoryBtn');
+      if (historyBtn) {
+        historyBtn.addEventListener('click', () => {
+          this._activeView = this._activeView === 'history' ? 'main' : 'history';
+          const content = portal.querySelector('#lockContent');
+          if (content) {
+            content.innerHTML = this._renderLockPopupContent(entity, color, icon, stateText, sliderPosition, borderRadius, valueSize, valueWeight);
+            if (this._activeView === 'history') {
+              setTimeout(() => this._loadHistory(), 100);
+            } else {
+              this._setupLockHandlers(portal, entity);
+            }
+          }
+        });
+      }
+
+      const openDoorBtn = portal.querySelector('#openDoorBtn');
+      if (openDoorBtn) {
+        openDoorBtn.addEventListener('click', () => {
+          this.hass.callService('lock', 'open', { entity_id: this._config.entity });
+        });
+      }
+
+      this._setupLockHandlers(portal, entity);
+    }
+
+    _renderLockPopupContent(entity, color, icon, stateText, sliderPosition, borderRadius, valueSize, valueWeight) {
+      if (this._activeView === 'history') {
+        return `<div class="timeline-container" data-view-type="history" id="historyContainer"><div class="history-loading">Loading Timeline...</div></div>`;
+      }
+
+      return `
+        <div class="lock-slider-container">
+          <div class="lock-state-display">${stateText}</div>
+          <div class="lock-vertical-slider" id="lockSlider">
+            <div class="lock-slider-fill"></div>
+            <div class="lock-slider-thumb">
+              <ha-icon icon="${icon}"></ha-icon>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    _setupLockHandlers(portal, entity) {
+      if (this._activeView === 'history') return;
+
+      const slider = portal.querySelector('#lockSlider');
+      if (!slider) return;
+
+      const isLocked = entity.state === 'locked';
+      
+      slider.addEventListener('click', (e) => {
+        const rect = slider.getBoundingClientRect();
+        const clickY = e.clientY - rect.top;
+        const clickPercent = (rect.height - clickY) / rect.height;
+        
+        // Top half = lock, bottom half = unlock
+        if (clickPercent > 0.5) {
+          this.hass.callService('lock', 'lock', { entity_id: this._config.entity });
+        } else {
+          this.hass.callService('lock', 'unlock', { entity_id: this._config.entity });
+        }
+      });
+    }
 
     _renderIndividualView() {
       const entity = this._getEntity();
@@ -5143,6 +6491,17 @@ class HkiButtonCard extends LitElement {
       if (hours > 0) return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
       if (minutes > 0) return minutes === 1 ? '1 minute ago' : `${minutes} minutes ago`;
       return 'Just now';
+    }
+
+    _formatLastTriggered(entity) {
+      if (!entity || !entity.last_changed) {
+        return '';
+      }
+      const lastChanged = new Date(entity.last_changed);
+      if (isNaN(lastChanged.getTime())) {
+        return '';
+      }
+      return this._getTimeAgo(lastChanged);
     }
 
     
@@ -7109,70 +8468,67 @@ class HkiButtonCard extends LitElement {
             .card-config { 
                 display: flex; 
                 flex-direction: column; 
-                gap: 8px; 
-                margin-bottom: 20px; 
+                gap: 12px; 
+                padding: 8px; 
             }
             
             /* ALLOW OVERFLOW FOR DROPDOWNS */
             .accordion-group { 
-                border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12)); 
-                border-radius: 10px; 
-                background: transparent; 
-                overflow: visible; 
+                background: var(--secondary-background-color);
+                border-radius: 4px;
+                margin-bottom: 8px;
+                overflow: visible;
+                border: 1px solid var(--divider-color);
             }
             
             .accordion-header { 
-                padding: 14px 16px; 
-                background: var(--card-background-color); 
-                cursor: pointer; 
-                display: flex; 
-                justify-content: space-between; 
-                align-items: center; 
+                padding: 12px;
+                cursor: pointer;
                 font-weight: 600;
-                border-radius: 10px; 
+                background: var(--primary-background-color);
+                border-bottom: 1px solid var(--divider-color);
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
             }
 
             .accordion-header ha-icon {
-                --mdc-icon-size: 18px;
-                opacity: 0.9;
+                font-weight: bold;
+                font-size: 1.2em;
             }
             
             .accordion-content { 
-                padding: 16px; 
-                background: var(--primary-background-color); 
-                display: block;
+                padding: 12px;
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
                 overflow: visible; 
-                border-top: 1px solid var(--divider-color, rgba(255, 255, 255, 0.08));
-                border-bottom-left-radius: 10px;
-                border-bottom-right-radius: 10px;
             }
             
             .accordion-content.hidden { display: none; }
             
             .sub-accordion {
-                border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
-                border-radius: 10px;
+                background: var(--secondary-background-color);
+                border-radius: 4px;
                 margin-bottom: 8px;
-                background: transparent;
                 overflow: visible;
+                border: 1px solid var(--divider-color);
             }
             
             .sub-accordion .accordion-header {
-                padding: 14px 16px;
+                padding: 12px;
                 font-size: 14px;
                 font-weight: 600;
-                background: var(--card-background-color);
-                border-radius: 10px;
+                background: var(--primary-background-color);
+                border-bottom: 1px solid var(--divider-color);
             }
             
             .sub-accordion-content {
-                padding: 16px;
-                background: var(--primary-background-color);
-                display: block;
+                padding: 12px;
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
                 overflow: visible;
-                border-top: 1px solid var(--divider-color, rgba(255, 255, 255, 0.08));
-                border-bottom-left-radius: 10px;
-                border-bottom-right-radius: 10px;
             }
             
             .sub-accordion-content.hidden { display: none; }
