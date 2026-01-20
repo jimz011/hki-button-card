@@ -3,7 +3,7 @@
 const CARD_NAME_LIGHT = "hki-button-card";
 
 console.info(
-  '%c HKI-BUTTON-CARD %c v1.0.3 ',
+  '%c HKI-BUTTON-CARD %c v1.0.2 ',
   'color: white; background: #00C853; font-weight: bold;',
   'color: #00C853; background: white; font-weight: bold;'
 );
@@ -1085,6 +1085,12 @@ class HkiButtonCard extends LitElement {
         this._renderLockPopupPortal(entity);
         return;
       }
+      if (domain === 'fan') {
+        this._activeView = 'main';
+        this._renderFanPopupPortal(entity);
+        return;
+      }
+
 
       // Light default view
       this._activeView = 'brightness';
@@ -4530,7 +4536,7 @@ class HkiButtonCard extends LitElement {
 
           <div class="hki-tabs">
             <button class="tab-btn ${this._activeView === 'main' ? 'active' : ''}" id="tabMain" style="${this._activeView === 'main' ? this._getPopupButtonStyle(true) : this._getPopupButtonStyle(false)}"><ha-icon icon="mdi:water-percent"></ha-icon><span>Humidity</span></button>
-            ${modes.length > 0 ? `<button class="tab-btn ${this._activeView === 'modes' ? 'active' : ''}" id="tabModes" style="${this._activeView === 'modes' ? this._getPopupButtonStyle(true) : this._getPopupButtonStyle(false)}"><ha-icon icon="mdi:tune"></ha-icon><span>Mode</span></button>` : ''}
+            ${modes.length > 0 ? `<button class="tab-btn ${this._activeView === 'modes' ? 'active' : ''}" id="tabModes" style="${this._activeView === 'modes' ? this._getPopupButtonStyle(true) : this._getPopupButtonStyle(false)}"><ha-icon icon="mdi:tune"></ha-icon>${this._config.popup_hide_button_text ? '' : '<span>Mode</span>'}</button>` : ''}
           </div>
 
           <div class="hki-popup-content" id="humidifierContent">
@@ -4931,7 +4937,7 @@ class HkiButtonCard extends LitElement {
           </div>
 
           <div class="hki-tabs">
-            <button class="tab-btn ${this._activeView === 'main' ? 'active' : ''}" id="tabMain" style="${this._activeView === 'main' ? this._getPopupButtonStyle(true) : this._getPopupButtonStyle(false)}"><ha-icon icon="mdi:fan"></ha-icon><span>Speed</span></button>
+            <button class="tab-btn ${this._activeView === 'main' ? 'active' : ''}" id="tabMain" style="${this._activeView === 'main' ? this._getPopupButtonStyle(true) : this._getPopupButtonStyle(false)}"><ha-icon icon="mdi:fan"></ha-icon>${this._config.popup_hide_button_text ? '' : '<span>Speed</span>'}</button>
             ${presetModes.length > 0 ? `<button class="tab-btn ${this._activeView === 'presets' ? 'active' : ''}" id="tabPresets" style="${this._activeView === 'presets' ? this._getPopupButtonStyle(true) : this._getPopupButtonStyle(false)}"><ha-icon icon="mdi:tune"></ha-icon><span>Presets</span></button>` : ''}
           </div>
 
@@ -5190,6 +5196,33 @@ class HkiButtonCard extends LitElement {
     /**
      * Switch Popup - HomeKit Style Vertical Toggle
      */
+    /**
+     * Switch Popup - Centered Vertical Slider
+     */
+    /**
+     * Switch Popup - Matching Light/Climate Slider Style
+     */
+    /**
+     * Switch Popup - Large Prominent Thumb
+     */
+    /**
+     * Switch Popup - Large Prominent Handle
+     */
+    /**
+     * Switch Popup - Extra Thick Handle
+     */
+    /**
+     * Switch Popup - Super Thick Pill Handle
+     */
+    /**
+     * Switch Popup - Thick Pill Handle Matching Screenshot
+     */
+    /**
+     * Switch Popup - Thick Pill Handle with Matching Border-Radius
+     */
+    /**
+     * Switch Popup - Handle Follows Slider Border Radius
+     */
     _renderSwitchPopupPortal(entity) {
       if (this._popupPortal) this._popupPortal.remove();
       if (!entity) return;
@@ -5201,7 +5234,8 @@ class HkiButtonCard extends LitElement {
       const color = isOn ? 'var(--primary-color, #03a9f4)' : 'var(--disabled-text-color, #6f6f6f)';
       const icon = isOn ? 'mdi:toggle-switch' : 'mdi:toggle-switch-off';
       const borderRadius = this._config.popup_slider_radius ?? 12;
-      const valueSize = this._config.popup_value_font_size || 32;
+      const handleRadius = Math.round(borderRadius * 0.7); // Handle radius follows slider radius proportionally
+      const valueSize = this._config.popup_value_font_size || 36;
       const valueWeight = this._config.popup_value_font_weight || 300;
 
       const portal = document.createElement('div');
@@ -5247,39 +5281,58 @@ class HkiButtonCard extends LitElement {
             min-height: 0; 
           }
 
-          .switch-container {
-            display: flex; flex-direction: column; align-items: center; gap: 24px;
+          .switch-slider-container {
+            display: flex; flex-direction: column; align-items: center; gap: 12px;
+            width: 80px; height: 320px;
           }
           
-          .homekit-switch {
-            width: 100px;
-            height: 200px;
-            background: ${isOn ? color : 'var(--secondary-background-color, rgba(255,255,255,0.1))'};
-            border-radius: ${borderRadius * 4}px;
-            position: relative;
-            cursor: pointer;
-            transition: background 0.3s ease;
-            border: 2px solid var(--divider-color, rgba(255,255,255,0.1));
-          }
-          
-          .homekit-switch-thumb {
-            position: absolute;
-            width: 88px;
-            height: 88px;
-            background: white;
-            border-radius: 50%;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            transition: top 0.3s ease;
-            left: 4px;
-            top: ${isOn ? '4px' : 'calc(100% - 92px)'};
-          }
-          
-          .switch-state-text {
+          .value-display {
             font-size: ${valueSize}px;
             font-weight: ${valueWeight};
+            text-align: center;
+          }
+          
+          .slider-label {
+            font-size: 12px;
+            opacity: 0.5;
             text-transform: uppercase;
-            letter-spacing: 2px;
-            opacity: 0.8;
+            letter-spacing: 1px;
+          }
+          
+          .vertical-slider-track {
+            width: 100%; flex: 1;
+            background: var(--secondary-background-color, rgba(255, 255, 255, 0.1));
+            border: 2px solid var(--divider-color, rgba(255, 255, 255, 0.1));
+            border-radius: ${borderRadius}px;
+            position: relative;
+            overflow: hidden;
+            cursor: pointer;
+          }
+          
+          .vertical-slider-fill {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: ${color};
+            transition: background 0.3s ease, height 0.3s ease;
+            height: ${isOn ? '100%' : '0%'};
+            border-radius: 0 0 ${borderRadius}px ${borderRadius}px;
+          }
+          
+          .vertical-slider-thumb {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 70px;
+            height: 56px;
+            background: white;
+            border-radius: ${handleRadius}px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4);
+            cursor: grab;
+            pointer-events: none;
+            transition: bottom 0.3s ease;
+            bottom: ${isOn ? 'calc(100% - 60px)' : '4px'};
           }
 
           .timeline-container { width: 100%; height: 100%; overflow-y: auto; padding: 12px; box-sizing: border-box; }
@@ -5358,11 +5411,13 @@ class HkiButtonCard extends LitElement {
       }
 
       return `
-        <div class="switch-container">
-          <div class="homekit-switch" id="homekitSwitch">
-            <div class="homekit-switch-thumb"></div>
+        <div class="switch-slider-container">
+          <div class="value-display">${isOn ? 'On' : 'Off'}</div>
+          <div class="vertical-slider-track" id="switchSlider">
+            <div class="vertical-slider-fill"></div>
+            <div class="vertical-slider-thumb"></div>
           </div>
-          <div class="switch-state-text">${isOn ? 'On' : 'Off'}</div>
+          <div class="slider-label">Switch</div>
         </div>
       `;
     }
@@ -5370,7 +5425,7 @@ class HkiButtonCard extends LitElement {
     _setupSwitchHandlers(portal, entity) {
       if (this._activeView === 'history') return;
 
-      const switchEl = portal.querySelector('#homekitSwitch');
+      const switchEl = portal.querySelector('#switchSlider');
       if (!switchEl) return;
 
       switchEl.addEventListener('click', () => {
@@ -5380,7 +5435,7 @@ class HkiButtonCard extends LitElement {
     }
 
     /**
-     * Lock Popup - HA Style Vertical Slider
+     * Lock Popup - Handle Follows Slider Border Radius
      */
     _renderLockPopupPortal(entity) {
       if (this._popupPortal) this._popupPortal.remove();
@@ -5398,17 +5453,25 @@ class HkiButtonCard extends LitElement {
       const icon = isLocked ? 'mdi:lock' : (isJammed ? 'mdi:lock-alert' : 'mdi:lock-open');
       const stateText = isLocked ? 'Locked' : (isJammed ? 'Jammed' : (isLocking ? 'Locking' : (isUnlocking ? 'Unlocking' : 'Unlocked')));
       const borderRadius = this._config.popup_slider_radius ?? 12;
-      const valueSize = this._config.popup_value_font_size || 32;
+      const handleRadius = Math.round(borderRadius * 0.7); // Handle radius follows slider radius proportionally
+      const valueSize = this._config.popup_value_font_size || 36;
       const valueWeight = this._config.popup_value_font_weight || 300;
-
-      // Check if lock supports open
-      const supportsOpen = entity.attributes.supported_features ? (entity.attributes.supported_features & 2) !== 0 : false;
 
       const portal = document.createElement('div');
       portal.className = 'hki-popup-portal';
 
       // Calculate slider position (locked = top/100%, unlocked = bottom/0%)
       const sliderPosition = isLocked ? 100 : (isLocking || isUnlocking ? 50 : 0);
+      
+      // Calculate proper bottom position to keep handle inside container
+      let handleBottom;
+      if (sliderPosition === 0) {
+        handleBottom = '4px';
+      } else if (sliderPosition === 100) {
+        handleBottom = 'calc(100% - 60px)';
+      } else {
+        handleBottom = `calc(${sliderPosition}% - 28px)`;
+      }
 
       portal.innerHTML = `
         <style>
@@ -5451,29 +5514,34 @@ class HkiButtonCard extends LitElement {
           }
 
           .lock-slider-container {
-            display: flex; flex-direction: column; align-items: center; gap: 20px;
+            display: flex; flex-direction: column; align-items: center; gap: 12px;
+            width: 80px; height: 320px;
           }
           
-          .lock-state-display {
+          .value-display {
             font-size: ${valueSize}px;
             font-weight: ${valueWeight};
-            text-transform: capitalize;
-            letter-spacing: 1px;
-            opacity: 0.9;
+            text-align: center;
           }
           
-          .lock-vertical-slider {
-            width: 100px;
-            height: 320px;
-            background: var(--secondary-background-color, rgba(255,255,255,0.1));
-            border: 2px solid var(--divider-color, rgba(255,255,255,0.1));
+          .slider-label {
+            font-size: 12px;
+            opacity: 0.5;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+          }
+          
+          .vertical-slider-track {
+            width: 100%; flex: 1;
+            background: var(--secondary-background-color, rgba(255, 255, 255, 0.1));
+            border: 2px solid var(--divider-color, rgba(255, 255, 255, 0.1));
             border-radius: ${borderRadius}px;
             position: relative;
-            overflow: visible;
+            overflow: hidden;
             cursor: pointer;
           }
           
-          .lock-slider-fill {
+          .vertical-slider-fill {
             position: absolute;
             bottom: 0;
             left: 0;
@@ -5484,26 +5552,19 @@ class HkiButtonCard extends LitElement {
             border-radius: 0 0 ${Math.max(0, borderRadius - 2)}px ${Math.max(0, borderRadius - 2)}px;
           }
           
-          .lock-slider-thumb {
+          .vertical-slider-thumb {
             position: absolute;
             left: 50%;
             transform: translateX(-50%);
-            width: 80px;
-            height: 80px;
+            width: 70px;
+            height: 56px;
             background: white;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+            border-radius: ${handleRadius}px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4);
+            cursor: grab;
             pointer-events: none;
             transition: bottom 0.3s ease;
-            bottom: calc(${sliderPosition}% - 40px);
-          }
-          
-          .lock-slider-thumb ha-icon {
-            --mdc-icon-size: 40px;
-            color: ${color};
+            bottom: ${handleBottom};
           }
 
           .hki-popup-nav {
@@ -5562,12 +5623,10 @@ class HkiButtonCard extends LitElement {
           </div>
 
           <div class="hki-popup-nav">
-            ${supportsOpen ? `
-              <button class="nav-btn" id="openDoorBtn" style="${this._getPopupButtonStyle(false)}">
-                <ha-icon icon="mdi:door-open"></ha-icon>
-                <span>Open Door</span>
-              </button>
-            ` : ''}
+            <button class="nav-btn" id="openDoorBtn" style="${this._getPopupButtonStyle(false)}">
+              <ha-icon icon="mdi:door-open"></ha-icon>
+              ${this._config.popup_hide_button_text ? '' : '<span>Open Door</span>'}
+            </button>
           </div>
         </div>
       `;
@@ -5622,13 +5681,12 @@ class HkiButtonCard extends LitElement {
 
       return `
         <div class="lock-slider-container">
-          <div class="lock-state-display">${stateText}</div>
-          <div class="lock-vertical-slider" id="lockSlider">
-            <div class="lock-slider-fill"></div>
-            <div class="lock-slider-thumb">
-              <ha-icon icon="${icon}"></ha-icon>
-            </div>
+          <div class="value-display">${stateText}</div>
+          <div class="vertical-slider-track" id="lockSlider">
+            <div class="vertical-slider-fill"></div>
+            <div class="vertical-slider-thumb"></div>
           </div>
+          <div class="slider-label">Lock</div>
         </div>
       `;
     }
@@ -5638,8 +5696,6 @@ class HkiButtonCard extends LitElement {
 
       const slider = portal.querySelector('#lockSlider');
       if (!slider) return;
-
-      const isLocked = entity.state === 'locked';
       
       slider.addEventListener('click', (e) => {
         const rect = slider.getBoundingClientRect();
@@ -6375,6 +6431,9 @@ class HkiButtonCard extends LitElement {
             if (!entry.state) return false;
             if (domain === 'climate') return entry.state !== 'unknown';
             if (domain === 'cover') return entry.state !== 'unknown';
+            if (domain === 'lock') return entry.state !== 'unknown';
+            if (domain === 'humidifier') return entry.state !== 'unknown';
+            if (domain === 'fan') return entry.state !== 'unknown';
             return (entry.state === 'on' || entry.state === 'off' || entry.state === 'unavailable');
           })
           .reverse()
@@ -6446,6 +6505,14 @@ class HkiButtonCard extends LitElement {
                 if (raw.includes('armed') || raw.includes('arm')) return '#FF9800';
                 return '#2196F3';
               })()
+            : (domain === 'lock')
+              ? (() => {
+                  const state = entry.state ? String(entry.state).toLowerCase() : '';
+                  if (state === 'locked') return '#4CAF50';
+                  if (state === 'unlocked') return '#FFC107';
+                  if (state === 'jammed') return '#F44336';
+                  return '#2196F3';
+                })()
             : (domain === 'climate')
               ? ((HVAC_COLORS && HVAC_COLORS[entry.state]) || (entry.state === 'off' ? '#444' : '#FFD700'))
               : (domain === 'cover')
@@ -6597,6 +6664,7 @@ class HkiButtonCard extends LitElement {
             background: ${badgeBg};
             border: ${badgeBorder};
             transform: ${getTransform(this._config.badge_offset_x, this._config.badge_offset_y)};
+            min-width: 16px;
           ">
             ${badgeCount}
           </div>
@@ -7113,12 +7181,13 @@ class HkiButtonCard extends LitElement {
         .badge {
             position: absolute; top: -2px; right: -2px;
             color: white; border-radius: 50%;
-            width: 16px; height: 16px;
+            min-width: 16px; padding: 0 3px; height: 16px;
             display: flex; align-items: center; justify-content: center;
             font-weight: bold;
             z-index: 2;
-            box-sizing: content-box;
+            box-sizing: border-box;
             pointer-events: none;
+            flex-shrink: 0;
         }
         .badge.climate-corner-badge {
             top: 16px;
@@ -7252,6 +7321,9 @@ class HkiButtonCard extends LitElement {
     
         offsets: true,
       };
+
+      // Cache for perform-action domain selection (used when ha-service-picker isn't available)
+      this._paDomainCache = {};
     }
 
 
@@ -7408,26 +7480,70 @@ class HkiButtonCard extends LitElement {
               
               ${currentAction === "perform-action" ? html`
                 <div class="perform-action-config">
-                  <ha-textfield
-                    .hass=${this.hass}
-                    label="Service (e.g., light.turn_on)"
-                    .value=${actionConfig.perform_action || ""}
-                    @input=${(ev) => {
-                      ev.stopPropagation();
-                      const service = ev.target.value;
-                      if (service !== actionConfig.perform_action) {
-                        const updated = { 
-                          action: "perform-action",
-                          perform_action: service 
-                        };
-                        // Preserve existing target and data if they exist
-                        if (actionConfig.target) updated.target = actionConfig.target;
-                        if (actionConfig.data) updated.data = actionConfig.data;
+                  ${customElements.get("ha-service-picker") ? html`
+                    <ha-service-picker
+                      .hass=${this.hass}
+                      .label=${"Action (service)"}
+                      .value=${actionConfig.perform_action || ""}
+                      @value-changed=${(ev) => {
+                        ev.stopPropagation();
+                        const v = ev.detail?.value ?? ev.target?.value ?? "";
+                        const updated = { ...actionConfig, action: "perform-action", perform_action: String(v || "") };
                         this._fireChanged({ ...this._config, [configKey]: updated });
-                      }
-                    }}
-                    placeholder="light.turn_on"
-                  ></ha-textfield>
+                      }}
+                      @click=${(e) => e.stopPropagation()}
+                    ></ha-service-picker>
+                  ` : html`
+                    ${(() => {
+                      const full = String(actionConfig.perform_action || "");
+                      const derivedDomain = full.includes(".") ? full.split(".")[0] : "";
+                      const cachedDomain = this._paDomainCache?.[configKey] || "";
+                      const domain = cachedDomain || derivedDomain;
+                      const derivedService = (full.includes(".") && derivedDomain === domain) ? (full.split(".")[1] || "") : "";
+                      const services = (domain && this.hass?.services?.[domain]) ? Object.keys(this.hass.services[domain]).sort() : [];
+
+                      return html`
+                        <div class="side-by-side">
+                          <ha-select
+                            .label=${"Domain"}
+                            .value=${domain || undefined}
+                            @selected=${(e) => {
+                              e.stopPropagation();
+                              const nextDomain = e.target.value || "";
+                              this._paDomainCache[configKey] = nextDomain;
+                              // Clear service when domain changes
+                              const updated = { ...actionConfig, action: "perform-action", perform_action: "" };
+                              this._fireChanged({ ...this._config, [configKey]: updated });
+                              this.requestUpdate();
+                            }}
+                            @closed=${(e) => e.stopPropagation()}
+                            @click=${(e) => e.stopPropagation()}
+                          >
+                            <mwc-list-item value=""></mwc-list-item>
+                            ${Object.keys(this.hass?.services || {}).sort().map((d) => html`<mwc-list-item .value=${d}>${d}</mwc-list-item>`)}
+                          </ha-select>
+
+                          <ha-select
+                            .label=${"Service"}
+                            .value=${derivedService || undefined}
+                            .disabled=${!domain}
+                            @selected=${(e) => {
+                              e.stopPropagation();
+                              const service = e.target.value || "";
+                              const d = this._paDomainCache[configKey] || domain;
+                              const updated = { ...actionConfig, action: "perform-action", perform_action: (d && service) ? `${d}.${service}` : "" };
+                              this._fireChanged({ ...this._config, [configKey]: updated });
+                            }}
+                            @closed=${(e) => e.stopPropagation()}
+                            @click=${(e) => e.stopPropagation()}
+                          >
+                            <mwc-list-item value=""></mwc-list-item>
+                            ${services.map((s) => html`<mwc-list-item .value=${s}>${s}</mwc-list-item>`)}
+                          </ha-select>
+                        </div>
+                      `;
+                    })()}
+                  `}
 
                   ${actionConfig.perform_action ? html`
                     <ha-selector
@@ -8795,5 +8911,4 @@ class HkiButtonCard extends LitElement {
     description: "Customizable buttons with built-in popups.", 
     preview: true 
   });
-
 })();
