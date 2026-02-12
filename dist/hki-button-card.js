@@ -4519,6 +4519,17 @@ _tileSliderClick(e) {
       const entityName = entity?.attributes?.friendly_name || '' || this._config.entity;
       const pos = this._getCoverPosition(entity);
 
+      // Check default view configuration for groups
+      const defaultView = this._config.popup_default_view; // 'main', 'individual', or undefined
+      
+      // Auto-switch to individual/group view if configured and it's a group
+      // Only set if not already explicitly set by user
+      if (defaultView === 'individual' && isGroup && this._coverGroupMode === undefined) {
+        this._coverGroupMode = true;
+      } else if (this._coverGroupMode === undefined) {
+        this._coverGroupMode = false;
+      }
+
       // Use same visual overrides as other popups
       const popupRadius = this._config.popup_border_radius ?? 16;
       const borderRadius = this._config.popup_slider_radius ?? 12;
@@ -6333,6 +6344,18 @@ document.body.appendChild(portal);
       const isOn = state === 'on';
 
       const isGroup = Array.isArray(entity.attributes?.entity_id) && entity.attributes.entity_id.length > 1;
+
+      // Check default view configuration for groups
+      const defaultView = this._config.popup_default_view; // 'main', 'individual', or undefined
+      
+      // Auto-switch to individual/group view if configured and it's a group
+      // Only set on initial render (when _activeView is not already 'group')
+      if (defaultView === 'individual' && isGroup && this._activeView !== 'group') {
+        this._activeView = 'group';
+      } else if (!this._activeView || this._activeView === 'brightness') {
+        // Reset to main view if not set or coming from light popup
+        this._activeView = 'main';
+      }
 
       const color = isOn ? 'var(--primary-color, #03a9f4)' : 'var(--disabled-text-color, #6f6f6f)';
       const icon = isOn ? 'mdi:toggle-switch' : 'mdi:toggle-switch-off';
@@ -11473,32 +11496,49 @@ ${isGoogleLayout ? '' : html`
                   <ha-textfield label="Card Opacity" type="number" step="0.1" min="0" max="1" .value=${this._config.popup_card_opacity ?? 1} @input=${(ev) => this._textChanged(ev, "popup_card_opacity")}></ha-textfield>
                 </div>
                 
-                <p style="font-size: 11px; opacity: 0.7; margin: 12px 0 4px 0;">Default View & Section (Lights)</p>
-                <p style="font-size: 10px; opacity: 0.6; margin: 0 0 8px 0; font-style: italic;">For light groups/entities, choose which view and section to show when opening the popup.</p>
-                <div class="side-by-side">
-                  <ha-select
-                    label="Default View"
-                    .value=${this._config.popup_default_view || 'main'}
-                    @selected=${(ev) => this._dropdownChanged(ev, "popup_default_view")}
-                    @closed=${(e) => e.stopPropagation()}
-                    @click=${(e) => e.stopPropagation()}
-                  >
-                    <mwc-list-item value="main">Main (Group Controls)</mwc-list-item>
-                    <mwc-list-item value="individual">Individual Lights</mwc-list-item>
-                  </ha-select>
-                  <ha-select
-                    label="Default Section"
-                    .value=${this._config.popup_default_section || 'last'}
-                    @selected=${(ev) => this._dropdownChanged(ev, "popup_default_section")}
-                    @closed=${(e) => e.stopPropagation()}
-                    @click=${(e) => e.stopPropagation()}
-                  >
-                    <mwc-list-item value="last">Last Used (Default)</mwc-list-item>
-                    <mwc-list-item value="brightness">Always Brightness</mwc-list-item>
-                    <mwc-list-item value="color">Always Color</mwc-list-item>
-                    <mwc-list-item value="temperature">Always Temperature</mwc-list-item>
-                  </ha-select>
-                </div>
+                ${(() => {
+                  const domain = selectedEntity?.entity_id?.split('.')[0];
+                  const hasChildren = selectedEntity?.attributes?.entity_id && Array.isArray(selectedEntity.attributes.entity_id);
+                  const isLightGroup = domain === 'light' && hasChildren;
+                  
+                  // Show default view for any group entity (light, cover, switch, etc.)
+                  // Show default section only for light groups
+                  if (hasChildren) {
+                    const entityTypeName = domain === 'light' ? 'Lights' : (domain === 'cover' ? 'Covers' : (domain === 'switch' ? 'Switches' : 'Entities'));
+                    
+                    return html`
+                      <p style="font-size: 11px; opacity: 0.7; margin: 12px 0 4px 0;">Default View${isLightGroup ? ' & Section' : ''} (Groups)</p>
+                      <p style="font-size: 10px; opacity: 0.6; margin: 0 0 8px 0; font-style: italic;">For ${domain} groups, choose which view${isLightGroup ? ' and section' : ''} to show when opening the popup.</p>
+                      <div class="side-by-side">
+                        <ha-select
+                          label="Default View"
+                          .value=${this._config.popup_default_view || 'main'}
+                          @selected=${(ev) => this._dropdownChanged(ev, "popup_default_view")}
+                          @closed=${(e) => e.stopPropagation()}
+                          @click=${(e) => e.stopPropagation()}
+                        >
+                          <mwc-list-item value="main">Main (Group Controls)</mwc-list-item>
+                          <mwc-list-item value="individual">Individual ${entityTypeName}</mwc-list-item>
+                        </ha-select>
+                        ${isLightGroup ? html`
+                          <ha-select
+                            label="Default Section"
+                            .value=${this._config.popup_default_section || 'last'}
+                            @selected=${(ev) => this._dropdownChanged(ev, "popup_default_section")}
+                            @closed=${(e) => e.stopPropagation()}
+                            @click=${(e) => e.stopPropagation()}
+                          >
+                            <mwc-list-item value="last">Last Used (Default)</mwc-list-item>
+                            <mwc-list-item value="brightness">Always Brightness</mwc-list-item>
+                            <mwc-list-item value="color">Always Color</mwc-list-item>
+                            <mwc-list-item value="temperature">Always Temperature</mwc-list-item>
+                          </ha-select>
+                        ` : html`<div></div>`}
+                      </div>
+                    `;
+                  }
+                  return '';
+                })()}
                 
                 ${(() => {
                   const domain = selectedEntity?.entity_id?.split('.')[0];
