@@ -2,7 +2,7 @@
 
 
 console.info(
-  '%c HKI-BUTTON-CARD %c v1.0.5 ',
+  '%c HKI-BUTTON-CARD %c v1.0.6 ',
   'color: white; background: #00C853; font-weight: bold;',
   'color: #00C853; background: white; font-weight: bold;'
 );
@@ -24,9 +24,12 @@ console.info(
   const CARD_TYPE = "hki-button-card";
   const EDITOR_TAG = "hki-button-card-editor";
 
+  // hvac_mode colors (what mode the thermostat is set to)
   const HVAC_COLORS = {
-    heat: "#FF5722", cool: "#2196F3", heat_cool: "#4CAF50", auto: "#4CAF50",
-    dry: "#FFC107", fan_only: "#9E9E9E", off: "#424242"
+    heat: "darkorange", cool: "#1E90FF", heat_cool: "#4CAF50", auto: "#4CAF50",
+    dry: "#FFC107", fan_only: "#9E9E9E", off: "#424242",
+    // hvac_action colors (what the device is actually doing right now)
+    idle: "#4CAF50", heating: "darkorange", cooling: "#1E90FF", fan: "#9E9E9E",
   };
   const HVAC_ICONS = {
     heat: "mdi:fire", cool: "mdi:snowflake", heat_cool: "mdi:autorenew", auto: "mdi:autorenew",
@@ -289,6 +292,16 @@ class HkiButtonCard extends LitElement {
       ['popup_time_format',         'hki_popup','time_format'],
       ['popup_value_font_size',     'hki_popup','value','font_size'],
       ['popup_value_font_weight',   'hki_popup','value','font_weight'],
+      ['popup_blur_enabled',        'hki_popup','blur_enabled'],
+      ['popup_blur_amount',         'hki_popup','blur_amount'],
+      ['popup_border_radius',       'hki_popup','border_radius'],
+      ['popup_width',               'hki_popup','width'],
+      ['popup_height',              'hki_popup','height'],
+      ['popup_width_custom',        'hki_popup','width_custom'],
+      ['popup_height_custom',       'hki_popup','height_custom'],
+      ['popup_card_blur_enabled',   'hki_popup','card_blur_enabled'],
+      ['popup_card_blur_amount',    'hki_popup','card_blur_amount'],
+      ['popup_card_opacity',        'hki_popup','card_opacity'],
       // lock
       ['lock_contact_sensor_entity','lock','contact_sensor_entity'],
       ['lock_contact_sensor_label', 'lock','contact_sensor_label'],
@@ -455,6 +468,7 @@ class HkiButtonCard extends LitElement {
       this._renderedState = '';
       this._renderedLabel = '';
       this._renderedInfo = '';
+      this._renderedIcon = '';
       // Styling rendered values
       this._renderedCardColor = '';
       this._renderedCardOpacity = '';
@@ -616,6 +630,15 @@ class HkiButtonCard extends LitElement {
         }
         // Tile does not support label
         this._config.show_label = false;
+      }
+      
+      // Domain-specific action defaults
+      const domain = this._config.entity ? this._config.entity.split('.')[0] : '';
+      if (domain === 'alarm_control_panel') {
+        // Alarm entities: default tap to hki-more-info
+        if (!Object.prototype.hasOwnProperty.call(cfg, 'tap_action')) {
+          this._config.tap_action = { action: 'hki-more-info' };
+        }
       }
       
       // Setup templates when config changes (use longer delay to debounce editor changes)
@@ -996,6 +1019,56 @@ if (!shouldUpdate && oldEntity && newEntity &&
 
     _getDomain() {
       return this._config?.entity ? this._config.entity.split('.')[0] : '';
+    }
+
+    // Returns the best color for a climate entity by checking hvac_action first,
+    // with smart temp-based inference when the action doesn't match reality.
+    _getClimateColor(entity) {
+      const action = entity?.attributes?.hvac_action;
+      const mode = entity?.state;
+      const currentTemp = entity?.attributes?.current_temperature;
+      const targetTemp = entity?.attributes?.temperature;
+      
+      // Smart inference: if we have temp data, infer actual state from physics
+      if (currentTemp !== undefined && targetTemp !== undefined) {
+        // HEAT mode: simple logic
+        if (mode === 'heat') {
+          return targetTemp > currentTemp 
+            ? (HVAC_COLORS.heating || 'darkorange')
+            : (HVAC_COLORS.idle || '#4CAF50');
+        }
+        
+        // COOL mode: simple logic
+        if (mode === 'cool') {
+          return targetTemp < currentTemp 
+            ? (HVAC_COLORS.cooling || '#1E90FF')
+            : (HVAC_COLORS.idle || '#4CAF50');
+        }
+        
+        // AUTO/HEAT_COOL modes: more complex - need to check actual action
+        if (mode === 'auto' || mode === 'heat_cool') {
+          // Heating: target > current
+          if (targetTemp > currentTemp) {
+            return HVAC_COLORS.heating || 'darkorange';
+          }
+          // Cooling: target < current AND hvac_action confirms cooling
+          if (targetTemp < currentTemp && action === 'cooling') {
+            return HVAC_COLORS.cooling || '#1E90FF';
+          }
+          // Otherwise idle (target reached or not actively cooling)
+          return HVAC_COLORS.idle || '#4CAF50';
+        }
+        
+        // Other modes (fan_only, dry, etc.) - check if on
+        if (mode !== 'off') {
+          return HVAC_COLORS.idle || '#4CAF50';
+        }
+      }
+      
+      // Fallback to hvac_action if we have it and no temp data
+      if (action && HVAC_COLORS[action] !== undefined) return HVAC_COLORS[action];
+      // Final fallback to mode state
+      return HVAC_COLORS?.[mode] || HVAC_COLORS?.off || 'var(--primary-color)';
     }
     
     _syncClimateState() {
@@ -1839,6 +1912,80 @@ _tileSliderClick(e) {
       return ['light', 'climate', 'alarm_control_panel', 'cover', 'humidifier', 'fan', 'switch', 'input_boolean', 'lock', 'group'].includes(domain);
     }
 
+    _getPopupPortalStyle() {
+      const blurEnabled = this._config.popup_blur_enabled === true;
+      const blurAmount = this._config.popup_blur_amount !== undefined ? Number(this._config.popup_blur_amount) : 10;
+      const blur = blurEnabled && blurAmount > 0 
+        ? `backdrop-filter: blur(${blurAmount}px); -webkit-backdrop-filter: blur(${blurAmount}px); will-change: backdrop-filter;` 
+        : '';
+      return `background: rgba(0,0,0,0.7); ${blur}`;
+    }
+
+    _getPopupCardStyle() {
+      const cardBlurEnabled = this._config.popup_card_blur_enabled === true;
+      const cardBlurAmount = this._config.popup_card_blur_amount !== undefined ? Number(this._config.popup_card_blur_amount) : 40;
+      let cardOpacity = this._config.popup_card_opacity !== undefined ? Number(this._config.popup_card_opacity) : 1;
+      
+      // For glass effect to be visible, we need transparency
+      // If blur enabled but opacity still at default (1), use 0.7 for more visible glass effect
+      if (cardBlurEnabled && cardOpacity === 1) {
+        cardOpacity = 0.7;
+      }
+      
+      // Build background with proper opacity
+      let bg;
+      if (cardOpacity < 1 || cardBlurEnabled) {
+        // Use rgba for transparency (needed for glass effect)
+        bg = `background: rgba(28, 28, 28, ${cardOpacity});`;
+      } else {
+        // Fully opaque - use CSS variable
+        bg = `background: var(--card-background-color, #1c1c1c);`;
+      }
+      
+      // Add blur effect if enabled
+      const blur = cardBlurEnabled && cardBlurAmount > 0
+        ? `backdrop-filter: blur(${cardBlurAmount}px); -webkit-backdrop-filter: blur(${cardBlurAmount}px);`
+        : '';
+      
+      return bg + (blur ? ' ' + blur : '');
+    }
+
+    _getPopupDimensions() {
+      const widthCfg = this._config.popup_width || 'auto';
+      const heightCfg = this._config.popup_height || 'auto';
+      
+      let width = '95vw; max-width: 500px';
+      let height = '90vh; max-height: 800px';
+      
+      // Width handling
+      if (widthCfg === 'auto') {
+        width = '95vw; max-width: 500px';
+      } else if (widthCfg === 'custom') {
+        const customWidth = this._config.popup_width_custom ?? 400;
+        width = `${customWidth}px`;
+      } else if (widthCfg === 'default') {
+        width = '90%; max-width: 400px';
+      } else if (!isNaN(Number(widthCfg))) {
+        // Legacy numeric value
+        width = `${Number(widthCfg)}px`;
+      }
+      
+      // Height handling
+      if (heightCfg === 'auto') {
+        height = '90vh; max-height: 800px';
+      } else if (heightCfg === 'custom') {
+        const customHeight = this._config.popup_height_custom ?? 600;
+        height = `${customHeight}px`;
+      } else if (heightCfg === 'default') {
+        height = '600px';
+      } else if (!isNaN(Number(heightCfg))) {
+        // Legacy numeric value
+        height = `${Number(heightCfg)}px`;
+      }
+      
+      return { width, height };
+    }
+
     _openPopup() {
       if (this._popupOpen) return;
       
@@ -2459,6 +2606,8 @@ _tileSliderClick(e) {
 
       // Use coalescing for border radius so 0 is valid
       const borderRadius = this._config.popup_slider_radius ?? 12;
+      const popupBorderRadius = this._config.popup_border_radius ?? 16;
+      const { width: popupWidth, height: popupHeight } = this._getPopupDimensions();
       
       const portal = document.createElement('div');
       portal.className = 'hki-light-popup-portal';
@@ -2469,13 +2618,13 @@ _tileSliderClick(e) {
         <style>
           .hki-light-popup-portal {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-            background: rgba(0, 0, 0, 0.7); 
+            ${this._getPopupPortalStyle()}
             display: flex; align-items: center; justify-content: center; z-index: 9999;
           }
           .hki-light-popup-container {
-            background: var(--card-background-color, #1c1c1c); 
-            border-radius: 16px; 
-            width: 90%; max-width: 400px; height: 600px;
+            ${this._getPopupCardStyle()}
+            border-radius: ${popupBorderRadius}px; 
+            width: ${popupWidth}; height: ${popupHeight};
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
             display: flex; flex-direction: column;
             overflow: hidden;
@@ -2956,8 +3105,10 @@ _tileSliderClick(e) {
       const attrs = entity.attributes || {};
       const mode = entity.state;
       const unit = '°';
-      const color = (HVAC_COLORS && HVAC_COLORS[mode]) || HVAC_COLORS.off || 'var(--primary-color)';
+      const color = this._getClimateColor(entity);
       const borderRadius = this._config.popup_slider_radius ?? 12;
+      const popupBorderRadius = this._config.popup_border_radius ?? 16;
+      const { width: popupWidth, height: popupHeight } = this._getPopupDimensions();
 
       // Keep temp constraints in sync (also used by slider handlers)
       this._tempMin = attrs.min_temp || 7;
@@ -2983,13 +3134,13 @@ _tileSliderClick(e) {
         <style>
           .hki-popup-portal {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.7);
+            ${this._getPopupPortalStyle()}
             display: flex; align-items: center; justify-content: center; z-index: 9999;
           }
           .hki-popup-container {
-            background: var(--card-background-color, #1c1c1c);
-            border-radius: 16px;
-            width: 90%; max-width: 400px; height: 600px;
+            ${this._getPopupCardStyle()};
+            border-radius: ${popupBorderRadius}px;
+            width: ${popupWidth}; height: ${popupHeight};
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
             display: flex; flex-direction: column; overflow: hidden; user-select: none; -webkit-user-select: none;
             user-select: none;
@@ -4312,6 +4463,8 @@ _tileSliderClick(e) {
       // Use same visual overrides as other popups
       const popupRadius = this._config.popup_border_radius ?? 16;
       const borderRadius = this._config.popup_slider_radius ?? 12;
+      const popupBorderRadius = this._config.popup_border_radius ?? 16;
+      const { width: popupWidth, height: popupHeight } = this._getPopupDimensions();
 
       const portal = document.createElement('div');
       portal.className = 'hki-light-popup-portal';
@@ -4331,13 +4484,13 @@ _tileSliderClick(e) {
           /* Base popup styles (mirrors light/climate popups) */
           .hki-light-popup-portal {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.7);
+            ${this._getPopupPortalStyle()}
             display: flex; align-items: center; justify-content: center; z-index: 9999;
           }
           .hki-light-popup-container {
-            background: var(--card-background-color, #1c1c1c);
+            ${this._getPopupCardStyle()};
             border-radius: ${popupRadius}px;
-            width: 90%; max-width: 400px; height: 600px;
+            width: ${popupWidth}; height: ${popupHeight};
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
             display: flex; flex-direction: column;
             overflow: hidden;
@@ -4928,6 +5081,7 @@ document.body.appendChild(portal);
       const entityName = entity?.attributes?.friendly_name || '' || this._config.entity;
       const state = entity.state || 'unknown';
       const popupRadius = this._config.popup_border_radius ?? 16;
+      const { width: popupWidth, height: popupHeight } = this._getPopupDimensions();
 
       const icon = (state === 'disarmed') ? 'mdi:shield-check' : 'mdi:shield-lock';
       const iconColor = (state === 'disarmed') ? '#4CAF50' : '#F44336';
@@ -4942,13 +5096,13 @@ document.body.appendChild(portal);
           /* Reuse the same base popup styling as other HKI popups */
           .hki-light-popup-portal {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.7);
+            ${this._getPopupPortalStyle()}
             display: flex; align-items: center; justify-content: center; z-index: 9999;
           }
           .hki-light-popup-container {
-            background: var(--card-background-color, #1c1c1c);
+            ${this._getPopupCardStyle()};
             border-radius: ${popupRadius}px;
-            width: 90%; max-width: 400px; height: 600px;
+            width: ${popupWidth}; height: ${popupHeight};
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
             display: flex; flex-direction: column;
             overflow: hidden;
@@ -5246,6 +5400,8 @@ document.body.appendChild(portal);
       const color = isOn ? 'var(--primary-color, #03a9f4)' : 'var(--disabled-text-color, #6f6f6f)';
       const icon = isOn ? 'mdi:air-humidifier' : 'mdi:air-humidifier-off';
       const borderRadius = this._config.popup_slider_radius ?? 12;
+      const popupBorderRadius = this._config.popup_border_radius ?? 16;
+      const { width: popupWidth, height: popupHeight } = this._getPopupDimensions();
 
       const valueSize = this._config.popup_value_font_size || 36;
       const valueWeight = this._config.popup_value_font_weight || 300;
@@ -5257,13 +5413,13 @@ document.body.appendChild(portal);
         <style>
           .hki-popup-portal {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.7);
+            ${this._getPopupPortalStyle()}
             display: flex; align-items: center; justify-content: center; z-index: 9999;
           }
           .hki-popup-container {
-            background: var(--card-background-color, #1c1c1c);
+            ${this._getPopupCardStyle()};
             border-radius: 16px;
-            width: 90%; max-width: 400px; height: 600px;
+            width: ${popupWidth}; height: ${popupHeight};
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
             display: flex; flex-direction: column; overflow: hidden; user-select: none; -webkit-user-select: none;
           }
@@ -5658,6 +5814,8 @@ document.body.appendChild(portal);
       const color = isOn ? 'var(--primary-color, #03a9f4)' : 'var(--disabled-text-color, #6f6f6f)';
       const icon = isOn ? 'mdi:fan' : 'mdi:fan-off';
       const borderRadius = this._config.popup_slider_radius ?? 12;
+      const popupBorderRadius = this._config.popup_border_radius ?? 16;
+      const { width: popupWidth, height: popupHeight } = this._getPopupDimensions();
 
       const valueSize = this._config.popup_value_font_size || 36;
       const valueWeight = this._config.popup_value_font_weight || 300;
@@ -5669,13 +5827,13 @@ document.body.appendChild(portal);
         <style>
           .hki-popup-portal {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.7);
+            ${this._getPopupPortalStyle()}
             display: flex; align-items: center; justify-content: center; z-index: 9999;
           }
           .hki-popup-container {
-            background: var(--card-background-color, #1c1c1c);
+            ${this._getPopupCardStyle()};
             border-radius: 16px;
-            width: 90%; max-width: 400px; height: 600px;
+            width: ${popupWidth}; height: ${popupHeight};
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
             display: flex; flex-direction: column; overflow: hidden; user-select: none; -webkit-user-select: none;
           }
@@ -6137,13 +6295,13 @@ document.body.appendChild(portal);
         <style>
           .hki-popup-portal {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.7);
+            ${this._getPopupPortalStyle()}
             display: flex; align-items: center; justify-content: center; z-index: 9999;
           }
           .hki-popup-container {
-            background: var(--card-background-color, #1c1c1c);
+            ${this._getPopupCardStyle()};
             border-radius: 16px;
-            width: 90%; max-width: 400px; height: 600px;
+            width: ${popupWidth}; height: ${popupHeight};
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
             display: flex; flex-direction: column; overflow: hidden; user-select: none; -webkit-user-select: none;
           }
@@ -6497,13 +6655,13 @@ document.body.appendChild(portal);
         <style>
           .hki-popup-portal {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.7);
+            ${this._getPopupPortalStyle()}
             display: flex; align-items: center; justify-content: center; z-index: 9999;
           }
           .hki-popup-container {
-            background: var(--card-background-color, #1c1c1c);
+            ${this._getPopupCardStyle()};
             border-radius: 16px;
-            width: 90%; max-width: 400px; height: 600px;
+            width: ${popupWidth}; height: ${popupHeight};
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
             display: flex; flex-direction: column; overflow: hidden; user-select: none; -webkit-user-select: none;
           }
@@ -7931,11 +8089,14 @@ if (layout === 'square') {
       const domain = this._getDomain();
       let iconColor;
       // When no explicit icon_color is set, follow Home Assistant defaults:
-      // - off: --state-icon-color
-      // - on/active: #ffc107 (yellow/amber for active state)
       // - unavailable: --state-icon-unavailable-color
+      // - climate: color based on hvac_action / hvac_mode
+      // - light on: actual bulb color
+      // - on: #ffc107, off: --state-icon-color
       if (isUnavailable) {
         iconColor = 'var(--state-icon-unavailable-color)';
+      } else if (domain === 'climate' && !this._config.icon_color) {
+        iconColor = this._getClimateColor(entity);
       } else if (domain === 'light' && isOn && !this._config.icon_color) {
         // For lights: use actual color
         iconColor = this._getCurrentColor() || '#ffc107';
@@ -7950,8 +8111,7 @@ if (layout === 'square') {
         if (rendered === 'auto') {
           // Auto mode: smart color based on domain and state
           if (domain === 'climate') {
-            const mode = entity?.state;
-            iconColor = (HVAC_COLORS && HVAC_COLORS[mode]) || HVAC_COLORS?.off || 'var(--primary-color)';
+            iconColor = this._getClimateColor(entity);
           } else if (domain === 'lock') {
             const state = entity?.state;
             if (state === 'locked') iconColor = '#4CAF50';
@@ -8049,17 +8209,20 @@ if (layout === 'square') {
       let animClass = '';
       if (this._config.icon_animation) {
         const rendered = this.renderTemplate('iconAnimation', this._config.icon_animation);
-        if (rendered) {
+        if (rendered && rendered !== 'none') {
           // If it's a plain animation name (no template syntax in original config)
           if (!this._isTemplate(this._config.icon_animation)) {
             // Default to showing animation only when entity is on
             animClass = isOnEffective ? `animate-${rendered}` : '';
           } else {
             // Template explicitly controls when to show animation
-            // If template returns animation name, show it
-            animClass = rendered !== 'none' && rendered !== '' ? `animate-${rendered}` : '';
+            animClass = `animate-${rendered}`;
           }
         }
+        // rendered === 'none' → no animation (also suppresses the fan default below)
+      } else if (domain === 'fan' && isOnEffective) {
+        // Fan: spin by default when on (override with icon_animation: none to disable)
+        animClass = 'animate-spin';
       }
 
       // Custom Font Logic for specific fields
@@ -8174,7 +8337,7 @@ const iconAlign = this._config.icon_align || 'left';
                           `;
                         })() : iconToUse ? html`
                           <ha-icon 
-                            icon="${iconToUse}"
+                            .icon=${iconToUse}
                             class="${animClass}"
                             style="--mdc-icon-size: var(--hki-icon-size); color: ${iconColor};"
                           ></ha-icon>
@@ -8244,6 +8407,8 @@ const iconAlign = this._config.icon_align || 'left';
         let tileIconColor;
         if (isUnavailable) {
           tileIconColor = 'var(--state-icon-unavailable-color)';
+        } else if (domain === 'climate' && !this._config.icon_color) {
+          tileIconColor = this._getClimateColor(entity);
         } else if (domain === 'light' && isOn && !this._config.icon_color) {
           // For lights: use actual color
           tileIconColor = this._getCurrentColor() || '#ffc107';
@@ -8256,8 +8421,7 @@ const iconAlign = this._config.icon_align || 'left';
           const rendered = this.renderTemplate('iconColor', this._config.icon_color);
           if (rendered === 'auto') {
             if (domain === 'climate') {
-              const mode = entity?.state;
-              tileIconColor = (HVAC_COLORS && HVAC_COLORS[mode]) || HVAC_COLORS?.off || 'var(--primary-color)';
+              tileIconColor = this._getClimateColor(entity);
             } else if (domain === 'light' && isOn) {
               tileIconColor = this._getCurrentColor() || 'var(--primary-color)';
             }
@@ -8304,7 +8468,9 @@ const iconAlign = this._config.icon_align || 'left';
           }
         }
 
-        const tileAnimClass = (this._config.enable_icon_animation === true && isOnEffective) ? 'hki-icon-anim' : '';
+        const tileAnimClass = (this._config.enable_icon_animation === true && isOnEffective)
+          ? 'hki-icon-anim'
+          : (domain === 'fan' && isOnEffective ? 'animate-spin' : '');
         const __hkiTileHeightCfg = Number(this._config.tile_height);
         const __hkiTileHeightRaw = (Number.isFinite(__hkiTileHeightCfg) && __hkiTileHeightCfg > 0)
           ? Math.round(__hkiTileHeightCfg)
@@ -8387,7 +8553,7 @@ const iconAlign = this._config.icon_align || 'left';
                   ${this._config.entity_picture ? html`
                     <img src="${this._getEntityPicture(entity)}" class="${tileAnimClass}" style="width:var(--hki-icon-size);height:var(--hki-icon-size);border-radius:50%; " />
                   ` : (icon && this._config.icon) ? html`
-                    <ha-icon icon="${icon}" class="${tileAnimClass}" style="--mdc-icon-size: var(--hki-icon-size); color: ${tileIconColor}; transition: color 0.3s;"></ha-icon>
+                    <ha-icon .icon=${icon} class="${tileAnimClass}" style="--mdc-icon-size: var(--hki-icon-size); color: ${tileIconColor}; transition: color 0.3s;"></ha-icon>
                   ` : html`
                     <ha-state-icon .hass=${this.hass} .stateObj=${entity} class="${tileAnimClass}" style="--mdc-icon-size: var(--hki-icon-size); color: ${tileIconColor}; transition: color 0.3s;"></ha-state-icon>
                   `}
@@ -8501,6 +8667,8 @@ const iconAlign = this._config.icon_align || 'left';
         let badgeIconColor;
         if (isUnavailable) {
           badgeIconColor = 'var(--state-icon-unavailable-color)';
+        } else if (domain === 'climate' && !this._config.icon_color) {
+          badgeIconColor = this._getClimateColor(entity);
         } else if (domain === 'light' && isOn && !this._config.icon_color) {
           // For lights: use actual color
           badgeIconColor = this._getCurrentColor() || '#ffc107';
@@ -8513,8 +8681,7 @@ const iconAlign = this._config.icon_align || 'left';
           const rendered = this.renderTemplate('iconColor', this._config.icon_color);
           if (rendered === 'auto') {
             if (domain === 'climate') {
-              const mode = entity?.state;
-              badgeIconColor = (HVAC_COLORS && HVAC_COLORS[mode]) || HVAC_COLORS?.off || 'var(--primary-color)';
+              badgeIconColor = this._getClimateColor(entity);
             } else if (domain === 'light' && isOn) {
               badgeIconColor = this._getCurrentColor() || 'var(--primary-color)';
             }
@@ -8540,11 +8707,10 @@ const iconAlign = this._config.icon_align || 'left';
             }
           }
 
-          if (this._config.icon) {
-            const iconToUse = this._config.icon;
+          if (iconToUse) {
             return html`
               <ha-icon
-                icon="${iconToUse}"
+                .icon=${iconToUse}
                 class="${animClass}"
                 style="--mdc-icon-size:${iconSize}px;color:${badgeIconColor};transition:color 0.3s;display:block;"
               ></ha-icon>
@@ -11125,6 +11291,53 @@ ${isGoogleLayout ? '' : html`
                   <strong>Note:</strong> These settings only work when an action is set to <code>more-info (HKI)</code>.
                 </p>
                 
+                <div class="separator"></div>
+                <strong>Popup Container</strong>
+                <ha-textfield label="Border Radius (px)" type="number" .value=${this._config.popup_border_radius ?? 16} @input=${(ev) => this._textChanged(ev, "popup_border_radius")}></ha-textfield>
+                <div class="side-by-side">
+                  <ha-select
+                    label="Width"
+                    .value=${this._config.popup_width || 'auto'}
+                    @selected=${(ev) => this._dropdownChanged(ev, "popup_width")}
+                    @closed=${(e) => e.stopPropagation()}
+                    @click=${(e) => e.stopPropagation()}
+                  >
+                    <mwc-list-item value="auto">Auto (Responsive) - Default</mwc-list-item>
+                    <mwc-list-item value="default">Default (400px)</mwc-list-item>
+                    <mwc-list-item value="custom">Custom</mwc-list-item>
+                  </ha-select>
+                  ${this._config.popup_width === 'custom' ? html`
+                    <ha-textfield label="Custom Width (px)" type="number" .value=${this._config.popup_width_custom ?? 400} @input=${(ev) => this._textChanged(ev, "popup_width_custom")}></ha-textfield>
+                  ` : html`<div></div>`}
+                </div>
+                <div class="side-by-side">
+                  <ha-select
+                    label="Height"
+                    .value=${this._config.popup_height || 'auto'}
+                    @selected=${(ev) => this._dropdownChanged(ev, "popup_height")}
+                    @closed=${(e) => e.stopPropagation()}
+                    @click=${(e) => e.stopPropagation()}
+                  >
+                    <mwc-list-item value="auto">Auto (Responsive) - Default</mwc-list-item>
+                    <mwc-list-item value="default">Default (600px)</mwc-list-item>
+                    <mwc-list-item value="custom">Custom</mwc-list-item>
+                  </ha-select>
+                  ${this._config.popup_height === 'custom' ? html`
+                    <ha-textfield label="Custom Height (px)" type="number" .value=${this._config.popup_height_custom ?? 600} @input=${(ev) => this._textChanged(ev, "popup_height_custom")}></ha-textfield>
+                  ` : html`<div></div>`}
+                </div>
+                <p style="font-size: 11px; opacity: 0.7; margin: 12px 0 4px 0;">Background Blur (Portal)</p>
+                <ha-formfield .label=${"Enable Background Blur"}><ha-switch .checked=${this._config.popup_blur_enabled === true} @change=${(ev) => this._switchChanged(ev, "popup_blur_enabled")}></ha-switch></ha-formfield>
+                <ha-textfield label="Blur Amount (px)" type="number" .value=${this._config.popup_blur_amount ?? 10} @input=${(ev) => this._textChanged(ev, "popup_blur_amount")} .disabled=${this._config.popup_blur_enabled !== true}></ha-textfield>
+                
+                <p style="font-size: 11px; opacity: 0.7; margin: 12px 0 4px 0;">Card Glass Effect (Bubble-card style)</p>
+                <p style="font-size: 10px; opacity: 0.6; margin: 0 0 8px 0; font-style: italic;">Creates a frosted glass effect on the popup card. When enabled, auto-adjusts opacity to 0.7 for visibility.</p>
+                <ha-formfield .label=${"Enable Card Blur"}><ha-switch .checked=${this._config.popup_card_blur_enabled === true} @change=${(ev) => this._switchChanged(ev, "popup_card_blur_enabled")}></ha-switch></ha-formfield>
+                <div class="side-by-side">
+                  <ha-textfield label="Card Blur (px)" type="number" .value=${this._config.popup_card_blur_amount ?? 40} @input=${(ev) => this._textChanged(ev, "popup_card_blur_amount")} .disabled=${this._config.popup_card_blur_enabled !== true}></ha-textfield>
+                  <ha-textfield label="Card Opacity" type="number" step="0.1" min="0" max="1" .value=${this._config.popup_card_opacity ?? 1} @input=${(ev) => this._textChanged(ev, "popup_card_opacity")}></ha-textfield>
+                </div>
+                
                 ${(() => {
                   const domain = selectedEntity?.entity_id?.split('.')[0];
                   
@@ -11135,12 +11348,12 @@ ${isGoogleLayout ? '' : html`
                   const showCoverOptions = domain === 'cover';
                   
                   if (!showLightOptions && !showClimateOptions && !showAlarmOptions && !showCoverOptions) {
-                    return html`<p style="font-size: 12px; opacity: 0.7; margin: 8px 0;">Select an entity to see popup options.</p>`;
+                    return '';
                   }
                   
                   return html`
                     <div class="separator"></div>
-                    <strong>Popup Features</strong>
+                    <strong>Features</strong>
                     <div class="checkbox-grid">
                       ${showLightOptions ? html`
                         <ha-formfield .label=${"Show Favorites"}><ha-switch .checked=${this._config.popup_show_favorites !== false} @change=${(ev) => this._switchChanged(ev, "popup_show_favorites")}></ha-switch></ha-formfield>
@@ -11157,15 +11370,23 @@ ${isGoogleLayout ? '' : html`
                 })()}
                 
                 <div class="separator"></div>
-                <strong>Button Labels</strong>
+                <strong>Content Display</strong>
+                <ha-textfield label="Slider Border Radius (px)" type="number" .value=${this._config.popup_slider_radius ?? 12} @input=${(ev) => this._textChanged(ev, "popup_slider_radius")}></ha-textfield>
                 <ha-formfield .label=${"Hide Text Under Buttons"}><ha-switch .checked=${this._config.popup_hide_button_text === true} @change=${(ev) => this._switchChanged(ev, "popup_hide_button_text")}></ha-switch></ha-formfield>
                 
-                <div class="separator"></div>
-                <strong>Popup Styling</strong>
-                <ha-textfield label="Popup Slider Radius" type="number" .value=${this._config.popup_slider_radius ?? 12} @input=${(ev) => this._textChanged(ev, "popup_slider_radius")}></ha-textfield>
-
-                <div class="separator"></div>
-                <strong>History / Logbook</strong>
+                <p style="font-size: 11px; opacity: 0.7; margin: 12px 0 4px 0;">Value Display (Temperature/Brightness)</p>
+                <div class="side-by-side">
+                    <ha-textfield label="Font Size (px)" type="number" .value=${this._config.popup_value_font_size ?? 36} @input=${(ev) => this._textChanged(ev, "popup_value_font_size")}></ha-textfield>
+                    <ha-textfield label="Font Weight" type="number" .value=${this._config.popup_value_font_weight ?? 300} @input=${(ev) => this._textChanged(ev, "popup_value_font_weight")}></ha-textfield>
+                </div>
+                
+                <p style="font-size: 11px; opacity: 0.7; margin: 12px 0 4px 0;">Label Display (Color/Mode Names)</p>
+                <div class="side-by-side">
+                    <ha-textfield label="Font Size (px)" type="number" .value=${this._config.popup_label_font_size ?? 16} @input=${(ev) => this._textChanged(ev, "popup_label_font_size")}></ha-textfield>
+                    <ha-textfield label="Font Weight" type="number" .value=${this._config.popup_label_font_weight ?? 400} @input=${(ev) => this._textChanged(ev, "popup_label_font_weight")}></ha-textfield>
+                </div>
+                
+                <p style="font-size: 11px; opacity: 0.7; margin: 12px 0 4px 0;">History/Logbook Time Format</p>
                 <ha-select
                   label="Time Format"
                   .value=${this._config.popup_time_format || 'auto'}
@@ -11179,24 +11400,12 @@ ${isGoogleLayout ? '' : html`
                 </ha-select>
                 
                 <div class="separator"></div>
-                <strong>Value Display</strong>
+                <strong>Active Button Styling</strong>
+                <p style="font-size: 11px; opacity: 0.7; margin-top: 0;">Customize selected/highlighted buttons</p>
                 <div class="side-by-side">
-                    <ha-textfield label="Font Size (px)" type="number" .value=${this._config.popup_value_font_size ?? 36} @input=${(ev) => this._textChanged(ev, "popup_value_font_size")}></ha-textfield>
-                    <ha-textfield label="Font Weight" type="number" .value=${this._config.popup_value_font_weight ?? 300} @input=${(ev) => this._textChanged(ev, "popup_value_font_weight")}></ha-textfield>
+                  <ha-textfield label="Color" .value=${this._config.popup_highlight_color || ""} @input=${(ev) => this._textChanged(ev, "popup_highlight_color")} placeholder="var(--primary-color)"></ha-textfield>
+                  <ha-textfield label="Text Color" .value=${this._config.popup_highlight_text_color || ""} @input=${(ev) => this._textChanged(ev, "popup_highlight_text_color")} placeholder="white"></ha-textfield>
                 </div>
-                
-                <div class="separator"></div>
-                <strong>Label Display (Color/Temp Names)</strong>
-                <div class="side-by-side">
-                    <ha-textfield label="Font Size (px)" type="number" .value=${this._config.popup_label_font_size ?? 16} @input=${(ev) => this._textChanged(ev, "popup_label_font_size")}></ha-textfield>
-                    <ha-textfield label="Font Weight" type="number" .value=${this._config.popup_label_font_weight ?? 400} @input=${(ev) => this._textChanged(ev, "popup_label_font_weight")}></ha-textfield>
-                </div>
-                
-                <div class="separator"></div>
-                <strong>Highlighted Button Styling</strong>
-                <p style="font-size: 11px; opacity: 0.7; margin-top: 0;">Customize the appearance of active/selected buttons in popups.</p>
-                <ha-textfield label="Highlight Color" .value=${this._config.popup_highlight_color || ""} @input=${(ev) => this._textChanged(ev, "popup_highlight_color")} placeholder="var(--primary-color)"></ha-textfield>
-                <ha-textfield label="Highlight Text Color" .value=${this._config.popup_highlight_text_color || ""} @input=${(ev) => this._textChanged(ev, "popup_highlight_text_color")} placeholder="var(--text-primary-color)"></ha-textfield>
                 <div class="side-by-side">
                   <ha-textfield label="Border Radius (px)" type="number" .value=${this._config.popup_highlight_radius ?? ""} @input=${(ev) => this._textChanged(ev, "popup_highlight_radius")} placeholder="8"></ha-textfield>
                   <ha-textfield label="Opacity" type="number" step="0.1" min="0" max="1" .value=${this._config.popup_highlight_opacity ?? ""} @input=${(ev) => this._textChanged(ev, "popup_highlight_opacity")} placeholder="1"></ha-textfield>
@@ -11211,16 +11420,18 @@ ${isGoogleLayout ? '' : html`
                   >
                     ${borders.map(b => html`<mwc-list-item .value=${b}>${b}</mwc-list-item>`)}
                   </ha-select>
-                  <ha-textfield label="Border Width" .value=${this._config.popup_highlight_border_width || ""} @input=${(ev) => this._textChanged(ev, "popup_highlight_border_width")} placeholder="0"></ha-textfield>
+                  <ha-textfield label="Border Width (px)" .value=${this._config.popup_highlight_border_width || ""} @input=${(ev) => this._textChanged(ev, "popup_highlight_border_width")} placeholder="0"></ha-textfield>
                 </div>
                 <ha-textfield label="Border Color" .value=${this._config.popup_highlight_border_color || ""} @input=${(ev) => this._textChanged(ev, "popup_highlight_border_color")}></ha-textfield>
                 <ha-textfield label="Box Shadow" .value=${this._config.popup_highlight_box_shadow || ""} @input=${(ev) => this._textChanged(ev, "popup_highlight_box_shadow")} placeholder="0 2px 8px rgba(0,0,0,0.2)"></ha-textfield>
                 
                 <div class="separator"></div>
-                <strong>Non-Highlighted Button Styling</strong>
-                <p style="font-size: 11px; opacity: 0.7; margin-top: 0;">Customize the appearance of inactive buttons in popups.</p>
-                <ha-textfield label="Background Color" .value=${this._config.popup_button_bg || ""} @input=${(ev) => this._textChanged(ev, "popup_button_bg")} placeholder="transparent"></ha-textfield>
-                <ha-textfield label="Text Color" .value=${this._config.popup_button_text_color || ""} @input=${(ev) => this._textChanged(ev, "popup_button_text_color")} placeholder="var(--primary-text-color)"></ha-textfield>
+                <strong>Inactive Button Styling</strong>
+                <p style="font-size: 11px; opacity: 0.7; margin-top: 0;">Customize unselected buttons</p>
+                <div class="side-by-side">
+                  <ha-textfield label="Background" .value=${this._config.popup_button_bg || ""} @input=${(ev) => this._textChanged(ev, "popup_button_bg")} placeholder="transparent"></ha-textfield>
+                  <ha-textfield label="Text Color" .value=${this._config.popup_button_text_color || ""} @input=${(ev) => this._textChanged(ev, "popup_button_text_color")} placeholder="inherit"></ha-textfield>
+                </div>
                 <div class="side-by-side">
                   <ha-textfield label="Border Radius (px)" type="number" .value=${this._config.popup_button_radius ?? ""} @input=${(ev) => this._textChanged(ev, "popup_button_radius")} placeholder="8"></ha-textfield>
                   <ha-textfield label="Opacity" type="number" step="0.1" min="0" max="1" .value=${this._config.popup_button_opacity ?? ""} @input=${(ev) => this._textChanged(ev, "popup_button_opacity")} placeholder="1"></ha-textfield>
@@ -11235,7 +11446,7 @@ ${isGoogleLayout ? '' : html`
                   >
                     ${borders.map(b => html`<mwc-list-item .value=${b}>${b}</mwc-list-item>`)}
                   </ha-select>
-                  <ha-textfield label="Border Width" .value=${this._config.popup_button_border_width || ""} @input=${(ev) => this._textChanged(ev, "popup_button_border_width")} placeholder="0"></ha-textfield>
+                  <ha-textfield label="Border Width (px)" .value=${this._config.popup_button_border_width || ""} @input=${(ev) => this._textChanged(ev, "popup_button_border_width")} placeholder="0"></ha-textfield>
                 </div>
                 <ha-textfield label="Border Color" .value=${this._config.popup_button_border_color || ""} @input=${(ev) => this._textChanged(ev, "popup_button_border_color")}></ha-textfield>
              </div>
