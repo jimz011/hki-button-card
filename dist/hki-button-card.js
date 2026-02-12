@@ -2,7 +2,7 @@
 
 
 console.info(
-  '%c HKI-BUTTON-CARD %c v1.0.6 ',
+  '%c HKI-BUTTON-CARD %c v1.0.7 ',
   'color: white; background: #00C853; font-weight: bold;',
   'color: #00C853; background: white; font-weight: bold;'
 );
@@ -302,6 +302,8 @@ class HkiButtonCard extends LitElement {
       ['popup_card_blur_enabled',   'hki_popup','card_blur_enabled'],
       ['popup_card_blur_amount',    'hki_popup','card_blur_amount'],
       ['popup_card_opacity',        'hki_popup','card_opacity'],
+      ['popup_default_view',        'hki_popup','default_view'],
+      ['popup_default_section',     'hki_popup','default_section'],
       // lock
       ['lock_contact_sensor_entity','lock','contact_sensor_entity'],
       ['lock_contact_sensor_label', 'lock','contact_sensor_label'],
@@ -2604,6 +2606,14 @@ _tileSliderClick(e) {
 
       const isGroup = entity && entity.attributes.entity_id && Array.isArray(entity.attributes.entity_id);
 
+      // Check default view configuration
+      const defaultView = this._config.popup_default_view; // 'main', 'individual', or undefined
+      const defaultSection = this._config.popup_default_section; // 'brightness', 'color', 'temperature', 'last', or undefined
+      
+      // For main entity view, always show brightness first
+      // default_section only applies to individual lights view
+      this._activeView = 'brightness';
+
       // Use coalescing for border radius so 0 is valid
       const borderRadius = this._config.popup_slider_radius ?? 12;
       const popupBorderRadius = this._config.popup_border_radius ?? 16;
@@ -2892,6 +2902,46 @@ _tileSliderClick(e) {
             width: 12px; height: 100%; background: white; border-radius: 6px;
             box-shadow: 0 2px 6px rgba(0,0,0,0.3); pointer-events: none; transition: left 0.2s;
           }
+          
+          .individual-item.switch-style .individual-icon {
+            cursor: pointer;
+            transition: background 0.2s;
+          }
+          .individual-item.switch-style .individual-icon:hover {
+            background: var(--divider-color, rgba(255, 255, 255, 0.1));
+          }
+          .individual-switch-container {
+            flex: 0 0 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+          }
+          .individual-switch {
+            width: 52px;
+            height: 32px;
+            background: var(--divider-color, rgba(255, 255, 255, 0.1));
+            border-radius: 16px;
+            position: relative;
+            transition: background 0.3s;
+          }
+          .individual-switch.on {
+            background: var(--primary-color, #03a9f4);
+          }
+          .individual-switch-thumb {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 26px;
+            height: 26px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.3s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+          }
+          .individual-switch.on .individual-switch-thumb {
+            transform: translateX(20px);
+          }
 
           .effects-list-container { width: 100%; }
           .effects-trigger {
@@ -3092,6 +3142,15 @@ _tileSliderClick(e) {
       this._setupPopupHandlers(portal);
       this._setupContentHandlers(portal);
       
+      // Auto-switch to individual view if configured and it's a group
+      if (defaultView === 'individual' && isGroup) {
+        const content = portal.querySelector('.hki-light-popup-content');
+        if (content) {
+          content.innerHTML = this._renderIndividualView();
+          this._setupContentHandlers(portal);
+        }
+      }
+      
       if (this._activeView === 'color') {
           setTimeout(() => this._setInitialColorIndicator(), 100);
       }
@@ -3189,7 +3248,7 @@ _tileSliderClick(e) {
             color: var(--text-primary-color, var(--primary-text-color));
           }
 
-          .hki-popup-content { flex: 1; padding: 20px; overflow-y: auto; display: flex; align-items: center; justify-content: center; min-height: 0; }
+          .hki-popup-content { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 0; }
           .sliders-wrapper { display: flex; gap: 24px; justify-content: center; width: 100%; align-items: center; }
           .slider-group { display: flex; flex-direction: column; align-items: center; gap: 12px; height: 320px; width: 80px; }
           .value-display { font-size: ${valueSize}px; font-weight: ${valueWeight}; text-align: center; }
@@ -4604,7 +4663,7 @@ _tileSliderClick(e) {
           .preset-btn {
             position: relative;
             height: 82px;
-            border-radius: 16px;
+            border-radius: ${popupBorderRadius}px;
             background: var(--divider-color, rgba(255, 255, 255, 0.06));
             border: 1px solid rgba(255, 255, 255, 0.08);
             display:flex; flex-direction:column; align-items:center; justify-content:center;
@@ -4688,8 +4747,8 @@ _tileSliderClick(e) {
             box-shadow: 0 0 0 2px rgba(0,0,0,0.1), 0 2px 8px rgba(0,0,0,0.3);
             pointer-events: none;
           }
-          .hki-cover-content { width: 100%; height: 100%; }
-          .cover-controls-wrap { width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
+          .hki-cover-content { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+          .cover-controls-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
           .cover-slider-wrap { width: 160px; height: 360px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
           .cover-value { font-size: 40px; font-weight: 300; }
           .cover-value span { font-size: 18px; opacity: 0.7; }
@@ -4860,7 +4919,7 @@ document.body.appendChild(portal);
             </div>
             <div style="opacity:0.55; letter-spacing:0.08em; font-size:${this._config.popup_label_font_size ?? 16}px; font-weight:${this._config.popup_label_font_weight ?? 400};">POSITION</div>
           </div>
-</div>
+        </div>
         ${this._config.popup_show_favorites !== false ? `<button class="save-favorite-fab" id="coverSave" title="Save favorite"><ha-icon icon="mdi:star-plus"></ha-icon></button>` : ''}
       `;
     }
@@ -5418,7 +5477,7 @@ document.body.appendChild(portal);
           }
           .hki-popup-container {
             ${this._getPopupCardStyle()};
-            border-radius: 16px;
+            border-radius: ${popupBorderRadius}px;
             width: ${popupWidth}; height: ${popupHeight};
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
             display: flex; flex-direction: column; overflow: hidden; user-select: none; -webkit-user-select: none;
@@ -5463,7 +5522,7 @@ document.body.appendChild(portal);
             color: var(--text-primary-color, var(--primary-text-color));
           }
 
-          .hki-popup-content { flex: 1; padding: 20px; overflow-y: auto; display: flex; align-items: center; justify-content: center; min-height: 0; }
+          .hki-popup-content { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 0; }
           
           .slider-with-buttons {
             display: flex; align-items: center; justify-content: center; width: 100%;
@@ -5832,7 +5891,7 @@ document.body.appendChild(portal);
           }
           .hki-popup-container {
             ${this._getPopupCardStyle()};
-            border-radius: 16px;
+            border-radius: ${popupBorderRadius}px;
             width: ${popupWidth}; height: ${popupHeight};
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
             display: flex; flex-direction: column; overflow: hidden; user-select: none; -webkit-user-select: none;
@@ -5877,7 +5936,7 @@ document.body.appendChild(portal);
             color: var(--text-primary-color, var(--primary-text-color));
           }
 
-          .hki-popup-content { flex: 1; padding: 20px; overflow-y: auto; display: flex; align-items: center; justify-content: center; min-height: 0; }
+          .hki-popup-content { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 0; }
           
           .fan-slider-wrapper {
             display: flex; align-items: center; justify-content: center; width: 100%;
@@ -6278,6 +6337,8 @@ document.body.appendChild(portal);
       const color = isOn ? 'var(--primary-color, #03a9f4)' : 'var(--disabled-text-color, #6f6f6f)';
       const icon = isOn ? 'mdi:toggle-switch' : 'mdi:toggle-switch-off';
       const borderRadius = this._config.popup_slider_radius ?? 12;
+      const popupBorderRadius = this._config.popup_border_radius ?? 16;
+      const { width: popupWidth, height: popupHeight } = this._getPopupDimensions();
       const handleRadius = Math.round(borderRadius * 0.7); // Handle radius follows slider radius proportionally
       const valueSize = this._config.popup_value_font_size || 36;
       const valueWeight = this._config.popup_value_font_weight || 300;
@@ -6300,7 +6361,7 @@ document.body.appendChild(portal);
           }
           .hki-popup-container {
             ${this._getPopupCardStyle()};
-            border-radius: 16px;
+            border-radius: ${popupBorderRadius}px;
             width: ${popupWidth}; height: ${popupHeight};
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
             display: flex; flex-direction: column; overflow: hidden; user-select: none; -webkit-user-select: none;
@@ -6327,7 +6388,7 @@ document.body.appendChild(portal);
 
           .hki-popup-content { 
             flex: 1; padding: 20px; overflow-y: auto; 
-            display: flex; align-items: center; justify-content: center; 
+            display: flex; flex-direction: column; align-items: center; justify-content: center; 
             min-height: 0; 
           }
 
@@ -6417,15 +6478,15 @@ document.body.appendChild(portal);
             position: absolute;
             left: 50%;
             transform: translateX(-50%);
-            width: 70px;
-            height: 56px;
+            width: 74px;
+            height: 120px;
             background: white;
             border-radius: ${handleRadius}px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4);
             cursor: grab;
             pointer-events: none;
             transition: bottom 0.3s ease;
-            bottom: ${isOn ? 'calc(100% - 60px)' : '4px'};
+            bottom: ${isOn ? 'calc(100% - 124px)' : '4px'};
           }
 
           .timeline-container { width: 100%; height: 100%; overflow-y: auto; padding: 12px; box-sizing: border-box; }
@@ -6627,6 +6688,8 @@ document.body.appendChild(portal);
       }
       
       const borderRadius = this._config.popup_slider_radius ?? 12;
+      const popupBorderRadius = this._config.popup_border_radius ?? 16;
+      const { width: popupWidth, height: popupHeight } = this._getPopupDimensions();
       const handleRadius = Math.round(borderRadius * 0.7); // Handle radius follows slider radius proportionally
       const valueSize = this._config.popup_value_font_size || 36;
       const valueWeight = this._config.popup_value_font_weight || 300;
@@ -6641,14 +6704,14 @@ document.body.appendChild(portal);
       // Use actual state for slider position, not transition states
       const sliderPosition = (isLocked || isLocking) ? 100 : 0;
       
-      // Calculate proper bottom position to keep handle inside container
+      // Calculate proper bottom position to keep handle inside container (handle is 120px tall, 50% of ~240px slider track)
       let handleBottom;
       if (sliderPosition === 0) {
         handleBottom = '4px';
       } else if (sliderPosition === 100) {
-        handleBottom = 'calc(100% - 60px)';
+        handleBottom = 'calc(100% - 124px)';
       } else {
-        handleBottom = `calc(${sliderPosition}% - 28px)`;
+        handleBottom = `calc(${sliderPosition}% - 60px)`;
       }
 
       portal.innerHTML = `
@@ -6660,7 +6723,7 @@ document.body.appendChild(portal);
           }
           .hki-popup-container {
             ${this._getPopupCardStyle()};
-            border-radius: 16px;
+            border-radius: ${popupBorderRadius}px;
             width: ${popupWidth}; height: ${popupHeight};
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
             display: flex; flex-direction: column; overflow: hidden; user-select: none; -webkit-user-select: none;
@@ -6687,7 +6750,7 @@ document.body.appendChild(portal);
 
           .hki-popup-content { 
             flex: 1; padding: 20px; overflow-y: auto; 
-            display: flex; align-items: center; justify-content: center; 
+            display: flex; flex-direction: column; align-items: center; justify-content: center; 
             min-height: 0; 
           }
 
@@ -6734,8 +6797,8 @@ document.body.appendChild(portal);
             position: absolute;
             left: 50%;
             transform: translateX(-50%);
-            width: 70px;
-            height: 56px;
+            width: 74px;
+            height: 120px;
             background: white;
             border-radius: ${handleRadius}px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4);
@@ -6921,10 +6984,21 @@ document.body.appendChild(portal);
 
       let html = '<div class="individual-container" data-view-type="individual">';
 
+      const defaultSection = this._config.popup_default_section; // 'brightness', 'color', 'temperature', 'last', or undefined
+      
       const pickDefaultMode = (child) => {
         const scm = child?.attributes?.supported_color_modes || [];
         const hasTemp = scm.includes('color_temp');
         const hasColor = scm.some(m => ['hs','rgb','xy','rgbw','rgbww'].includes(m));
+        
+        // If default_section is configured and not 'last', use that setting
+        if (defaultSection && defaultSection !== 'last') {
+          if (defaultSection === 'temperature' && hasTemp) return 'temp';
+          if (defaultSection === 'color' && hasColor) return 'color';
+          return 'brightness';
+        }
+        
+        // Otherwise use the smart default (temp > color > brightness)
         return hasTemp ? 'temp' : (hasColor ? 'color' : 'brightness');
       };
 
@@ -6939,9 +7013,38 @@ document.body.appendChild(portal);
         const scm = childEntity.attributes.supported_color_modes || [];
         const supportsTemp = scm.includes('color_temp');
         const supportsColor = scm.some(m => ['hs','rgb','xy','rgbw','rgbww'].includes(m));
+        const supportsBrightness = scm.some(m => ['brightness', 'color_temp', 'hs', 'rgb', 'xy', 'rgbw', 'rgbww'].includes(m));
+        
+        // If light doesn't support brightness/color/temp, show as switch
+        if (!supportsBrightness && !supportsTemp && !supportsColor) {
+          html += `
+            <div class="individual-item switch-style">
+              <button class="individual-icon" data-entity="${entityId}" data-action="toggle" title="Toggle">
+                <ha-icon icon="${isOn ? 'mdi:lightbulb-on' : 'mdi:lightbulb-off'}"></ha-icon>
+              </button>
+              <div class="individual-info">
+                <div class="individual-name">${name}</div>
+                <div class="individual-state">${isOn ? 'On' : 'Off'}</div>
+              </div>
+              <div class="individual-switch-container" data-entity="${entityId}">
+                <div class="individual-switch ${isOn ? 'on' : 'off'}">
+                  <div class="individual-switch-thumb"></div>
+                </div>
+              </div>
+            </div>
+          `;
+          return;
+        }
 
         if (!this._groupMemberModes) this._groupMemberModes = {};
-        if (!this._groupMemberModes[entityId]) this._groupMemberModes[entityId] = pickDefaultMode(childEntity);
+        
+        // If default_section is configured (not 'last'), always use that on first view
+        // Otherwise, remember the last mode used for this light
+        if (defaultSection && defaultSection !== 'last') {
+          this._groupMemberModes[entityId] = pickDefaultMode(childEntity);
+        } else if (!this._groupMemberModes[entityId]) {
+          this._groupMemberModes[entityId] = pickDefaultMode(childEntity);
+        }
 
         // Cycle order: brightness -> temp -> color -> brightness, skipping unsupported
         const mode = this._groupMemberModes[entityId];
@@ -7574,6 +7677,38 @@ document.body.appendChild(portal);
 
         slider.addEventListener('mousedown', onDown);
         slider.addEventListener('touchstart', onDown, { passive: true });
+      });
+
+      // Individual switch containers (for on/off only lights)
+      const individualSwitches = portal.querySelectorAll('.individual-switch-container');
+      individualSwitches.forEach(switchContainer => {
+        const entityId = switchContainer.dataset.entity;
+        switchContainer.addEventListener('click', async () => {
+          await this.hass.callService('light', 'toggle', { entity_id: entityId });
+        });
+      });
+      
+      // Individual icon buttons (both for mode switching and toggle)
+      const individualIcons = portal.querySelectorAll('.individual-icon');
+      individualIcons.forEach(icon => {
+        const entityId = icon.dataset.entity;
+        const action = icon.dataset.action;
+        
+        if (action === 'toggle') {
+          // For switch-style items, icon toggles the light
+          icon.addEventListener('click', async () => {
+            await this.hass.callService('light', 'toggle', { entity_id: entityId });
+          });
+        } else {
+          // For slider items, icon cycles the mode
+          icon.addEventListener('click', () => {
+            const nextMode = icon.dataset.next;
+            if (this._groupMemberModes) {
+              this._groupMemberModes[entityId] = nextMode;
+            }
+            this._renderPopupPortal();
+          });
+        }
       });
 
       // Effects toggle and items
@@ -11336,6 +11471,33 @@ ${isGoogleLayout ? '' : html`
                 <div class="side-by-side">
                   <ha-textfield label="Card Blur (px)" type="number" .value=${this._config.popup_card_blur_amount ?? 40} @input=${(ev) => this._textChanged(ev, "popup_card_blur_amount")} .disabled=${this._config.popup_card_blur_enabled !== true}></ha-textfield>
                   <ha-textfield label="Card Opacity" type="number" step="0.1" min="0" max="1" .value=${this._config.popup_card_opacity ?? 1} @input=${(ev) => this._textChanged(ev, "popup_card_opacity")}></ha-textfield>
+                </div>
+                
+                <p style="font-size: 11px; opacity: 0.7; margin: 12px 0 4px 0;">Default View & Section (Lights)</p>
+                <p style="font-size: 10px; opacity: 0.6; margin: 0 0 8px 0; font-style: italic;">For light groups/entities, choose which view and section to show when opening the popup.</p>
+                <div class="side-by-side">
+                  <ha-select
+                    label="Default View"
+                    .value=${this._config.popup_default_view || 'main'}
+                    @selected=${(ev) => this._dropdownChanged(ev, "popup_default_view")}
+                    @closed=${(e) => e.stopPropagation()}
+                    @click=${(e) => e.stopPropagation()}
+                  >
+                    <mwc-list-item value="main">Main (Group Controls)</mwc-list-item>
+                    <mwc-list-item value="individual">Individual Lights</mwc-list-item>
+                  </ha-select>
+                  <ha-select
+                    label="Default Section"
+                    .value=${this._config.popup_default_section || 'last'}
+                    @selected=${(ev) => this._dropdownChanged(ev, "popup_default_section")}
+                    @closed=${(e) => e.stopPropagation()}
+                    @click=${(e) => e.stopPropagation()}
+                  >
+                    <mwc-list-item value="last">Last Used (Default)</mwc-list-item>
+                    <mwc-list-item value="brightness">Always Brightness</mwc-list-item>
+                    <mwc-list-item value="color">Always Color</mwc-list-item>
+                    <mwc-list-item value="temperature">Always Temperature</mwc-list-item>
+                  </ha-select>
                 </div>
                 
                 ${(() => {
